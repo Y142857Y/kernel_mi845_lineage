@@ -28,7 +28,7 @@ struct lz4hc_ctx {
 	void *lz4hc_comp_mem;
 };
 
-static void *lz4hc_alloc_ctx(struct crypto_scomp *tfm)
+static void *lz4hc_alloc_ctx(void)
 {
 	void *ctx;
 
@@ -43,14 +43,14 @@ static int lz4hc_init(struct crypto_tfm *tfm)
 {
 	struct lz4hc_ctx *ctx = crypto_tfm_ctx(tfm);
 
-	ctx->lz4hc_comp_mem = lz4hc_alloc_ctx(NULL);
+	ctx->lz4hc_comp_mem = lz4hc_alloc_ctx();
 	if (IS_ERR(ctx->lz4hc_comp_mem))
 		return -ENOMEM;
 
 	return 0;
 }
 
-static void lz4hc_free_ctx(struct crypto_scomp *tfm, void *ctx)
+static void lz4hc_free_ctx(void *ctx)
 {
 	vfree(ctx);
 }
@@ -59,7 +59,7 @@ static void lz4hc_exit(struct crypto_tfm *tfm)
 {
 	struct lz4hc_ctx *ctx = crypto_tfm_ctx(tfm);
 
-	lz4hc_free_ctx(NULL, ctx->lz4hc_comp_mem);
+	lz4hc_free_ctx(ctx->lz4hc_comp_mem);
 }
 
 static int __lz4hc_compress_crypto(const u8 *src, unsigned int slen,
