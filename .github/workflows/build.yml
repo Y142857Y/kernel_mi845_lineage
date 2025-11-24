@@ -1,10 +1,6 @@
 name: 编译内核
 
-on:
-  push:
-    branches:
-      - stable/*
-  workflow_dispatch:
+on: [ push, workflow_dispatch ]
 
 env:
   AOSP_TOOLCHAIN_BRANCH: android16
@@ -140,7 +136,9 @@ jobs:
 
       - name: 获取当前时间
         id: time
-        run: echo "time_now=UTC$(date -u +'%Y%m%d%H%M')" >> $GITHUB_OUTPUT
+        run: |
+          echo "time=$(TZ='Asia/Shanghai' date -u +'%Y%m%d%H%M')" >> $GITHUB_OUTPUT
+          echo "timestamp=$(date +%s)" >> $GITHUB_OUTPUT
 
       - name: 下载ci管理器
         continue-on-error: true
@@ -151,19 +149,35 @@ jobs:
           workflow: build-manager.yml
           path: manager
 
-      - name: 删除旧的release
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete release --repo ${{ github.repository }} --cleanup-tag
-
       - name: 发布
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: release
-          name: Kernel build ${{ steps.time.outputs.time_now }}
+          tag_name: rel-${{ steps.time.outputs.timestamp }}
+          name: Kernel build ${{ steps.time.outputs.time }}
+          prerelease: ${{ startsWith(github.ref_name, 'dev/') }}
           files: |
             kernel/*
             manager/*
 
+      - name: 发送Telegram通知
+        continue-on-error: true
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/rel-${{ steps.time.outputs.timestamp }}
+        run: |
+          msg="*CI ${{ steps.time.outputs.time }}*
+          > Branch/分支: \`${{ github.ref_name }}\`
+          \`\`\`
+          ${{ env.COMMIT_MESSAGE }}
+          \`\`\`
+          [Download/下载](${{ env.RELEASE_URL }})
+          [Commit/提交](${{ env.COMMIT_URL }})
+          [Run/工作流](${{ env.RUN_URL }})
+          "
+          curl -s https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
+                      -F 'chat_id="${{ secrets.TELEGRAM_CHAT_ID }}"' \
+                      -F 'message_thread_id=${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}' \
+                      -F 'parse_mode="markdownv2"' \
+                      -F "text=\"$msg\""
