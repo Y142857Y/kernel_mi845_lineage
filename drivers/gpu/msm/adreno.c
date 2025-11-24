@@ -1,5 +1,5 @@
 /* Copyright (c) 2002,2007-2018,2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -59,7 +59,7 @@ MODULE_PARM_DESC(swfdetect, "Enable soft fault detection");
 #define DRIVER_VERSION_MAJOR   3
 #define DRIVER_VERSION_MINOR   1
 
-#define KGSL_LOG_LEVEL_DEFAULT 3
+#define KGSL_LOG_LEVEL_DEFAULT 0
 
 static void adreno_input_work(struct work_struct *work);
 static unsigned int counter_delta(struct kgsl_device *device,
@@ -67,7 +67,7 @@ static unsigned int counter_delta(struct kgsl_device *device,
 
 static struct devfreq_msm_adreno_tz_data adreno_tz_data = {
 	.bus = {
-		.max = 350,
+		.max = 1200,
 	},
 	.device_id = KGSL_DEVICE_3D0,
 };
@@ -743,8 +743,6 @@ static irqreturn_t adreno_irq_handler(struct kgsl_device *device)
 		tmp &= ~BIT(i);
 	}
 
-	gpudev->irq_trace(adreno_dev, status);
-
 	/*
 	 * Clear ADRENO_INT_RBBM_AHB_ERROR bit after this interrupt has been
 	 * cleared in its respective handler
@@ -1028,7 +1026,6 @@ static void adreno_of_get_initial_pwrlevel(struct adreno_device *adreno_dev,
 		init_level = 1;
 
 	pwr->active_pwrlevel = init_level;
-	pwr->default_pwrlevel = init_level;
 }
 
 static int adreno_of_get_legacy_pwrlevels(struct adreno_device *adreno_dev,
@@ -1185,7 +1182,7 @@ static int adreno_of_get_power(struct adreno_device *adreno_dev,
 		device->pwrctrl.pm_qos_wakeup_latency = 101;
 
 	if (of_property_read_u32(node, "qcom,idle-timeout", &timeout))
-		timeout = 80;
+		timeout = 64;
 
 	device->pwrctrl.interval_timeout = msecs_to_jiffies(timeout);
 
@@ -1433,9 +1430,6 @@ static int adreno_probe(struct platform_device *pdev)
 
 	kgsl_pwrscale_init(&pdev->dev, CONFIG_QCOM_ADRENO_DEFAULT_GOVERNOR);
 
-	/* Initialize coresight for the target */
-	adreno_coresight_init(adreno_dev);
-
 	/* Get the system cache slice descriptor for GPU */
 	adreno_dev->gpu_llc_slice = adreno_llc_getd(&pdev->dev, "gpu");
 	if (IS_ERR(adreno_dev->gpu_llc_slice)) {
@@ -1525,7 +1519,6 @@ static int adreno_remove(struct platform_device *pdev)
 #endif
 	adreno_sysfs_close(adreno_dev);
 
-	adreno_coresight_remove(adreno_dev);
 	adreno_profile_close(adreno_dev);
 
 	/* Release the system cache slice descriptor */
@@ -1789,13 +1782,6 @@ int adreno_set_unsecured_mode(struct adreno_device *adreno_dev,
 	if (!adreno_is_a5xx(adreno_dev) && !adreno_is_a6xx(adreno_dev))
 		return -EINVAL;
 
-	if (ADRENO_QUIRK(adreno_dev, ADRENO_QUIRK_CRITICAL_PACKETS) &&
-			adreno_is_a5xx(adreno_dev)) {
-		ret = a5xx_critical_packet_submit(adreno_dev, rb);
-		if (ret)
-			return ret;
-	}
-
 	/* GPU comes up in secured mode, make it unsecured by default */
 	if (adreno_dev->zap_loaded)
 		ret = adreno_switch_to_unsecure_mode(adreno_dev, rb);
@@ -2015,17 +2001,6 @@ static int _adreno_start(struct adreno_device *adreno_dev)
 		}
 	}
 
-	if (kgsl_gmu_isenabled(device) && adreno_dev->perfctr_ifpc_lo == 0) {
-		ret = adreno_perfcounter_get(adreno_dev,
-				KGSL_PERFCOUNTER_GROUP_GPMU_PWR, 4,
-				&adreno_dev->perfctr_ifpc_lo, NULL,
-				PERFCOUNTER_FLAG_KERNEL);
-		if (ret) {
-			WARN_ONCE(1, "Unable to get perf counter for IFPC\n");
-			adreno_dev->perfctr_ifpc_lo = 0;
-		}
-	}
-
 	/* Clear the busy_data stats - we're starting over from scratch */
 	adreno_dev->busy_data.gpu_busy = 0;
 	adreno_dev->busy_data.bif_ram_cycles = 0;
@@ -2049,9 +2024,6 @@ static int _adreno_start(struct adreno_device *adreno_dev)
 	 * comes out of power collapse.
 	 */
 	adreno_llc_setup(device);
-
-	/* Re-initialize the coresight registers if applicable */
-	adreno_coresight_start(adreno_dev);
 
 	adreno_irqctrl(adreno_dev, 1);
 
@@ -2181,9 +2153,6 @@ static int adreno_stop(struct kgsl_device *device)
 		adreno_llc_deactivate_slice(adreno_dev->gpu_llc_slice);
 	if (adreno_dev->gpuhtw_llc_slice)
 		adreno_llc_deactivate_slice(adreno_dev->gpuhtw_llc_slice);
-
-	/* Save active coresight registers if applicable */
-	adreno_coresight_stop(adreno_dev);
 
 	/* Save physical performance counter values before GPU power down*/
 	adreno_perfcounter_save(adreno_dev);
@@ -2952,9 +2921,6 @@ int adreno_soft_reset(struct kgsl_device *device)
 
 	/* Reinitialize the GPU */
 	gpudev->start(adreno_dev);
-
-	/* Re-initialize the coresight registers if applicable */
-	adreno_coresight_start(adreno_dev);
 
 	/* Enable IRQ */
 	adreno_irqctrl(adreno_dev, 1);
@@ -3751,6 +3717,9 @@ static void adreno_iommu_sync(struct kgsl_device *device, bool sync)
 	struct scm_desc desc = {0};
 	int ret;
 
+	if (!ADRENO_QUIRK(ADRENO_DEVICE(device), ADRENO_QUIRK_IOMMU_SYNC))
+		return;
+
 	if (sync == true) {
 		mutex_lock(&kgsl_mmu_sync);
 		desc.args[0] = true;
@@ -3767,25 +3736,29 @@ static void adreno_iommu_sync(struct kgsl_device *device, bool sync)
 	}
 }
 
-static void _regulator_disable(struct kgsl_regulator *regulator, bool poll)
+static void
+_regulator_disable(struct kgsl_regulator *regulator, unsigned int timeout)
 {
-	unsigned long wait_time = jiffies + msecs_to_jiffies(200);
+	unsigned long wait_time;
 
 	if (IS_ERR_OR_NULL(regulator->reg))
 		return;
 
 	regulator_disable(regulator->reg);
 
-	if (poll == false)
-		return;
+	wait_time = jiffies + msecs_to_jiffies(timeout);
 
+	/* Poll for regulator status to ensure it's OFF */
 	while (!time_after(jiffies, wait_time)) {
 		if (!regulator_is_enabled(regulator->reg))
 			return;
-		cpu_relax();
+		usleep_range(10, 100);
 	}
 
-	KGSL_CORE_ERR("regulator '%s' still on after 200ms\n", regulator->name);
+	if (!regulator_is_enabled(regulator->reg))
+		return;
+
+	KGSL_CORE_ERR("regulator '%s' disable timed out\n", regulator->name);
 }
 
 static void adreno_regulator_disable_poll(struct kgsl_device *device)
@@ -3793,18 +3766,13 @@ static void adreno_regulator_disable_poll(struct kgsl_device *device)
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 	int i;
-
-	/* Fast path - hopefully we don't need this quirk */
-	if (!ADRENO_QUIRK(adreno_dev, ADRENO_QUIRK_IOMMU_SYNC)) {
-		for (i = KGSL_MAX_REGULATORS - 1; i >= 0; i--)
-			_regulator_disable(&pwr->regulators[i], false);
-		return;
-	}
+	unsigned int timeout =
+		ADRENO_QUIRK(adreno_dev, ADRENO_QUIRK_IOMMU_SYNC) ? 200 : 5000;
 
 	adreno_iommu_sync(device, true);
 
-	for (i = 0; i < KGSL_MAX_REGULATORS; i++)
-		_regulator_disable(&pwr->regulators[i], true);
+	for (i = KGSL_MAX_REGULATORS - 1; i >= 0; i--)
+		_regulator_disable(&pwr->regulators[i], timeout);
 
 	adreno_iommu_sync(device, false);
 }
@@ -3879,6 +3847,7 @@ static struct platform_driver adreno_platform_driver = {
 		.name = DEVICE_3D_NAME,
 		.pm = &kgsl_pm_ops,
 		.of_match_table = adreno_match_table,
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	}
 };
 

@@ -767,12 +767,19 @@ static irqreturn_t qti_haptics_play_irq_handler(int irq, void *data)
 	int rc;
 
 	dev_dbg(chip->dev, "play_irq triggered\n");
+
+	if (effect == NULL)
+		goto handled;
+
 	if (play->playing_pos == effect->pattern_length) {
 		dev_dbg(chip->dev, "waveform playing done\n");
 		if (chip->play_irq_en) {
 			disable_irq_nosync(chip->play_irq);
 			chip->play_irq_en = false;
 		}
+
+		/* Clear PLAY after all pattern bytes are queued */
+		qti_haptics_play(chip, false);
 
 		goto handled;
 	}
@@ -868,9 +875,14 @@ static int qti_haptics_upload_effect(struct input_dev *dev,
 	if (hrtimer_active(&chip->hap_disable_timer)) {
 		rem = hrtimer_get_remaining(&chip->hap_disable_timer);
 		time_us = ktime_to_us(rem);
-		dev_dbg(chip->dev, "waiting for playing clear sequence: %lld us\n",
-				time_us);
-		usleep_range(time_us, time_us + 100);
+		if (time_us > 0) {
+			dev_dbg(chip->dev, "waiting for playing clear sequence: %lld us\n",
+					time_us);
+			usleep_range(time_us, time_us + 100);
+		} else {
+			dev_dbg(chip->dev, "negative clear sequence time detected: %lld us - not waiting\n",
+					time_us);
+		}
 	}
 
 	switch (effect->type) {
@@ -985,10 +997,6 @@ static int qti_haptics_playback(struct input_dev *dev, int effect_id, int val)
 				enable_irq(chip->play_irq);
 				chip->play_irq_en = true;
 			}
-			/* Toggle PLAY when playing pattern */
-			rc = qti_haptics_play(chip, false);
-			if (rc < 0)
-				return rc;
 		} else {
 			if (chip->play_irq_en) {
 				disable_irq_nosync(chip->play_irq);

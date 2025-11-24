@@ -147,11 +147,24 @@ struct sde_crtc_event {
 	void (*cb_func)(struct drm_crtc *crtc, void *usr);
 	void *usr;
 };
-
+/**
+ * struct sde_crtc_fps_info - structure for measuring fps periodicity
+ * @frame_count		: Total frames during configured periodic duration
+ * @last_sampled_time_us: Stores the last ktime in microsecs when fps
+ *                        was calculated
+ * @measured_fps	: Last measured fps value
+ * @fps_periodic_duration	: Duration in milliseconds to measure the fps.
+ *                                Default value is 1 second.
+ * @time_buf		: Buffer for storing ktime of the commits
+ * @next_time_index	: index into time_buf for storing ktime for next commit
+ */
 struct sde_crtc_fps_info {
 	u32 frame_count;
 	ktime_t last_sampled_time_us;
 	u32 measured_fps;
+	u32 fps_periodic_duration;
+	ktime_t *time_buf;
+	u32 next_time_index;
 };
 
 /*
@@ -217,6 +230,7 @@ struct sde_crtc_fps_info {
  * @sbuf_flush_mask_all: inline rotator flush mask for all attached planes
  * @sbuf_flush_mask_delta: inline rotator flush mask for current delta state
  * @idle_notify_work: delayed worker to notify idle timeout to user space
+ * @early_wakeup_work: work to trigger early wakeup
  * @power_event   : registered power event handle
  * @cur_perf      : current performance committed to clock/bandwidth driver
  * @rp_lock       : serialization lock for resource pool
@@ -289,6 +303,7 @@ struct sde_crtc {
 	u32 sbuf_flush_mask_all;
 	u32 sbuf_flush_mask_delta;
 	struct kthread_delayed_work idle_notify_work;
+	struct kthread_work early_wakeup_work;
 
 	struct sde_power_event *power_event;
 

@@ -58,6 +58,8 @@
 		qcom,mdss-dsi-tx-eot-append;
 		qcom,mdss-panel-on-dimming-delay = <120>;
 		qcom,mdss-night-brightness = <7 25 43 61>;
+		qcom,ulps-enabled;
+		qcom,suspend-ulps-enabled;
 		qcom,disp-doze-lpm-backlight = <20>;
 		qcom,disp-doze-hbm-backlight = <266>;
 		qcom,mdss-dsi-display-timings {
@@ -76,6 +78,7 @@
 				qcom,mdss-dsi-v-top-border = <0>;
 				qcom,mdss-dsi-v-bottom-border = <0>;
 				qcom,mdss-dsi-panel-framerate = <60>;
+				qcom,mdss-dsi-panel-jitter = <0x8 0xa>;
 
 				qcom,mdss-dsi-on-command = [
 					29 00 00 00 00 00 02 b0 00

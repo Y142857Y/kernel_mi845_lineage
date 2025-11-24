@@ -1,4 +1,5 @@
 /* Copyright (c) 2002,2007-2018,2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -52,8 +53,6 @@ void adreno_drawctxt_dump(struct kgsl_device *device,
 {
 	unsigned int queue, start, retire;
 	struct adreno_context *drawctxt = ADRENO_CONTEXT(context);
-	int index, pos;
-	char buf[120];
 
 	kgsl_readtimestamp(device, context, KGSL_TIMESTAMP_QUEUED, &queue);
 	kgsl_readtimestamp(device, context, KGSL_TIMESTAMP_CONSUMED, &start);
@@ -114,25 +113,6 @@ void adreno_drawctxt_dump(struct kgsl_device *device,
 	}
 
 stats:
-	memset(buf, 0, sizeof(buf));
-
-	pos = 0;
-
-	for (index = 0; index < SUBMIT_RETIRE_TICKS_SIZE; index++) {
-		uint64_t msecs;
-		unsigned int usecs;
-
-		if (!drawctxt->submit_retire_ticks[index])
-			continue;
-		msecs = drawctxt->submit_retire_ticks[index] * 10;
-		usecs = do_div(msecs, 192);
-		usecs = do_div(msecs, 1000);
-		pos += snprintf(buf + pos, sizeof(buf) - pos, "%d.%0d ",
-			(unsigned int)msecs, usecs);
-	}
-	dev_err(device->dev, "  context[%d]: submit times: %s\n",
-		context->id, buf);
-
 	spin_unlock_bh(&drawctxt->lock);
 }
 
@@ -629,8 +609,6 @@ int adreno_drawctxt_switch(struct adreno_device *adreno_dev,
 	if (drawctxt != NULL && kgsl_context_detached(&drawctxt->base))
 		return -ENOENT;
 
-	trace_adreno_drawctxt_switch(rb, drawctxt);
-
 	/* Get a refcount to the new instance */
 	if (drawctxt) {
 		if (!_kgsl_context_get(&drawctxt->base))
@@ -643,7 +621,7 @@ int adreno_drawctxt_switch(struct adreno_device *adreno_dev,
 	}
 	ret = adreno_ringbuffer_set_pt_ctx(rb, new_pt, drawctxt, flags);
 	if (ret)
-		return ret;
+		goto err;
 
 	if (rb->drawctxt_active) {
 		/* Wait for the timestamp to expire */
@@ -654,6 +632,13 @@ int adreno_drawctxt_switch(struct adreno_device *adreno_dev,
 		}
 	}
 
+	trace_adreno_drawctxt_switch(rb, drawctxt);
+
 	rb->drawctxt_active = drawctxt;
+
 	return 0;
+err:
+	if (drawctxt)
+		kgsl_context_put(&drawctxt->base);
+	return ret;
 }

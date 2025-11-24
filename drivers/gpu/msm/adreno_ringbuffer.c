@@ -1,5 +1,5 @@
 /* Copyright (c) 2002,2007-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -29,6 +29,7 @@
 #include "adreno_trace.h"
 
 #include "a3xx_reg.h"
+#include "a6xx_reg.h"
 #include "adreno_a5xx.h"
 
 #define RB_HOSTPTR(_rb, _pos) \
@@ -90,6 +91,8 @@ static void adreno_ringbuffer_wptr(struct adreno_device *adreno_dev,
 		struct adreno_ringbuffer *rb)
 {
 	unsigned long flags;
+	bool write = false;
+	unsigned int val;
 	int ret = 0;
 
 	spin_lock_irqsave(&rb->preempt_lock, flags);
@@ -102,19 +105,21 @@ static void adreno_ringbuffer_wptr(struct adreno_device *adreno_dev,
 			 */
 			kgsl_pwrscale_busy(KGSL_DEVICE(adreno_dev));
 
-			/*
-			 * Ensure the write posted after a possible
-			 * GMU wakeup (write could have dropped during wakeup)
-			 */
-			ret = adreno_gmu_fenced_write(adreno_dev,
-				ADRENO_REG_CP_RB_WPTR, rb->_wptr,
-				FENCE_STATUS_WRITEDROPPED0_MASK);
-
+			write = true;
+			val = rb->_wptr;
 		}
 	}
 
 	rb->wptr = rb->_wptr;
 	spin_unlock_irqrestore(&rb->preempt_lock, flags);
+
+	/*
+	 * Ensure the write posted after a possible
+	 * GMU wakeup (write could have dropped during wakeup)
+	 */
+	if (write)
+		ret = adreno_gmu_fenced_write(adreno_dev, ADRENO_REG_CP_RB_WPTR,
+			rb->_wptr, FENCE_STATUS_WRITEDROPPED0_MASK);
 
 	if (ret) {
 		/* If WPTR update fails, set the fault and trigger recovery */
@@ -837,6 +842,8 @@ static inline int _get_alwayson_counter(struct adreno_device *adreno_dev,
 		ADRENO_GPUREV(adreno_dev) <= ADRENO_REV_A530)
 		*p++ = adreno_getreg(adreno_dev,
 			ADRENO_REG_RBBM_ALWAYSON_COUNTER_LO);
+	else if (adreno_is_a6xx(adreno_dev))
+		*p++ = A6XX_CP_ALWAYS_ON_COUNTER_LO | (1 << 30) | (2 << 18);
 	else
 		*p++ = adreno_getreg(adreno_dev,
 			ADRENO_REG_RBBM_ALWAYSON_COUNTER_LO) |

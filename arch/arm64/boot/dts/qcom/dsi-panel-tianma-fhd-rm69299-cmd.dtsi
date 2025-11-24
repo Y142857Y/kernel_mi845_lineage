@@ -58,6 +58,7 @@
 		qcom,mdss-dsi-panel-blackness-level = <3230>;
 		qcom,dispparam-enabled;
 		/* qcom,esd-err-irq-gpio = <&tlmm 52 0>; */
+		qcom,suspend-ulps-enabled;
 		qcom,disp-doze-lpm-backlight = <20>;
 		qcom,disp-doze-hbm-backlight = <266>;
 		qcom,mdss-dsi-display-timings {
@@ -75,6 +76,7 @@
 				qcom,mdss-dsi-h-right-border = <0>;
 				qcom,mdss-dsi-v-top-border = <0>;
 				qcom,mdss-dsi-v-bottom-border = <0>;
+				qcom,mdss-dsi-panel-jitter = <0x8 0xa>;
 				qcom,mdss-dsi-panel-framerate = <60>;
 				qcom,mdss-dsi-on-command = [
 				39 00 00 00 00 00 03 51 00 00

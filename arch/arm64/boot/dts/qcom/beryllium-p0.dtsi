@@ -140,8 +140,8 @@
 
 	thermal-message {
 		thermal,batt-array-size = "26";
-		thermal,batt-level-screen-on = "0 3 5 7 9 11 12 12 13 13 14 14 16 0 3 5 7 9 10 11 12 12 13 14 14 16";
-		thermal,batt-level-screen-off = "0 2 4 6 8 9 9 9 9 9 9 14 16 0 1 1 2 4 6 7 7 7 8 9 14 16";
+		thermal,batt-level-screen-on = "0 0 1 2 3 4 5 6 7 8 9 10 11 0 0 1 2 3 4 5 6 7 8 9 10 11";
+		thermal,batt-level-screen-off = "0 0 1 1 2 3 4 4 5 6 7 8 9 0 0 1 1 2 3 4 5 5 6 7 8 9";
 	};
 
 };
@@ -753,6 +753,7 @@
 		polling-delay = <0>;
 		thermal-sensors = <&pm8998_adc_tm 0x4c>;
 		thermal-governor = "user_space";
+		wake-capable-sensor;
 
 		trips {
 			active-config0 {
@@ -768,6 +769,7 @@
 		polling-delay = <0>;
 		thermal-sensors = <&pm8998_adc_tm 0x4d>;
 		thermal-governor = "user_space";
+		wake-capable-sensor;
 
 		trips {
 			active-config0 {
@@ -783,6 +785,7 @@
 		polling-delay = <0>;
 		thermal-sensors = <&pm8998_adc_tm 0x4e>;
 		thermal-governor = "user_space";
+		wake-capable-sensor;
 
 		trips {
 			active-config0 {
@@ -798,6 +801,7 @@
 		polling-delay = <0>;
 		thermal-sensors = <&pm8998_adc_tm 0x4f>;
 		thermal-governor = "user_space";
+		wake-capable-sensor;
 
 		trips {
 			active-config0 {
@@ -813,6 +817,7 @@
 		polling-delay = <0>;
 		thermal-sensors = <&pm8998_adc_tm 0x50>;
 		thermal-governor = "user_space";
+		wake-capable-sensor;
 
 		trips {
 			active-config0 {
@@ -828,6 +833,7 @@
 		polling-delay = <0>;
 		thermal-sensors = <&pm8998_adc_tm 0x51>;
 		thermal-governor = "user_space";
+		wake-capable-sensor;
 
 		trips {
 			active-config0 {
@@ -843,6 +849,7 @@
 		polling-delay = <0>;
 		thermal-sensors = <&pm8998_adc_tm 0x52>;
 		thermal-governor = "user_space";
+		wake-capable-sensor;
 
 		trips {
 			active-config0 {
@@ -907,6 +914,10 @@
 	/*mi,limit_pd_vbus 1:enable 0:disable*/
 	mi,limit_pd_vbus = <1>;
 	mi,pd_vbus_max_limit = <9000000>;
+};
+
+&mdss_dsi_phy0 {
+	qcom,panel-allow-phy-poweroff;
 };
 
 &soc {

@@ -35,6 +35,9 @@
 #include "dsi_pwr.h"
 #include "sde_dbg.h"
 
+static short backlight_min = 0;
+module_param(backlight_min, short, 0644);
+
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
 #define NO_OVERRIDE -1
@@ -181,6 +184,9 @@ int dsi_display_set_backlight(void *display, u32 bl_lvl)
 
 	bl_scale_ad = panel->bl_config.bl_scale_ad;
 	//bl_temp = (u32)bl_temp * bl_scale_ad / MAX_AD_BL_SCALE_LEVEL;
+
+	if (bl_temp != 0 && bl_temp < backlight_min)
+		bl_temp = backlight_min;
 
 	pr_debug("bl_scale = %u, bl_scale_ad = %u, bl_lvl = %u\n",
 		bl_scale, bl_scale_ad, (u32)bl_temp);
@@ -1285,7 +1291,7 @@ static ssize_t debugfs_misr_setup(struct file *file,
 		return -ENODEV;
 
 	if (*ppos)
-		return 0;
+		return -EINVAL;
 
 	buf = kzalloc(MISR_BUFF_SIZE, GFP_KERNEL);
 	if (!buf)
@@ -1414,7 +1420,7 @@ static ssize_t debugfs_esd_trigger_check(struct file *file,
 		return -ENODEV;
 
 	if (*ppos)
-		return 0;
+		return -EINVAL;
 
 	if (user_len > sizeof(u32))
 		return -EINVAL;
@@ -1474,7 +1480,7 @@ static ssize_t debugfs_alter_esd_check_mode(struct file *file,
 		return -ENODEV;
 
 	if (*ppos)
-		return 0;
+		return -EINVAL;
 
 	buf = kzalloc(len, GFP_KERNEL);
 	if (ZERO_OR_NULL_PTR(buf))
@@ -1498,8 +1504,11 @@ static ssize_t debugfs_alter_esd_check_mode(struct file *file,
 		goto error;
 	}
 
-	if (!esd_config->esd_enabled)
+	if (!esd_config->esd_enabled) {
+		pr_warn("esd check didn't enable\n");
+		rc = -EINVAL;
 		goto error;
+	}
 
 	if (!strcmp(buf, "te_signal_check\n")) {
 		esd_config->status_mode = ESD_MODE_PANEL_TE;
@@ -5554,6 +5563,10 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 	}
 
 	display = platform_get_drvdata(pdev);
+	if (!display) {
+		pr_err("invalid display\n");
+		return -EINVAL;
+	}
 
 	(void)_dsi_display_dev_deinit(display);
 
