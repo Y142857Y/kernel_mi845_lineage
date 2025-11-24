@@ -34,7 +34,7 @@ ifneq ($(KDIR),)
 ccflags-y += -DDDK_ENV
 endif
 
-ccflags-y += -DKSU_VERSION=22213
+ccflags-y += -DKSU_VERSION=22217
 
 # SELinux drivers check
 ifeq ($(shell grep -q "current_sid(void)" $(srctree)/security/selinux/include/objsec.h 2>/dev/null; echo $$?),0)
