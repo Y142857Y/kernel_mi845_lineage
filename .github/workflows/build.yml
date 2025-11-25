@@ -1,6 +1,11 @@
 name: 编译内核
 
-on: [ push, workflow_dispatch ]
+on:
+  push:
+    branches:
+      - dev/*
+      - stable/*
+  workflow_dispatch:
 
 env:
   AOSP_TOOLCHAIN_BRANCH: android16
