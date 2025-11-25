@@ -25,16 +25,7 @@ ccflags-y += -I$(objtree)/security/selinux -include $(srctree)/include/uapi/asm-
 
 obj-$(CONFIG_KSU) += kernelsu.o
 
-KDIR := $(KDIR)
-MDIR := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
-
-# Stop printing unless ddk environment
-ifneq ($(KDIR),)
-# DDK environment workaround.
-ccflags-y += -DDDK_ENV
-endif
-
-ccflags-y += -DKSU_VERSION=22217
+ccflags-y += -DKSU_VERSION=22222
 
 # SELinux drivers check
 ifeq ($(shell grep -q "current_sid(void)" $(srctree)/security/selinux/include/objsec.h 2>/dev/null; echo $$?),0)
