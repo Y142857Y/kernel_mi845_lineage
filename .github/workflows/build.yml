@@ -37,10 +37,9 @@ jobs:
           sudo apt install -y ${{ env.PACKAGES }} > /dev/null
 
       - name: 同步仓库
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: kernel
-          submodules: true
 
       - name: 缓存Clang
         id: cache-clang
@@ -133,7 +132,7 @@ jobs:
     needs: build
     steps:
       - name: 获取构建产物
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           path: kernel
           pattern: kernel-*
@@ -147,9 +146,10 @@ jobs:
 
       - name: 下载ci管理器
         continue-on-error: true
-        uses: dawidd6/action-download-artifact@v6
+        uses: dawidd6/action-download-artifact@v11
         with:
           repo: rsuntk/KernelSU
+          workflow_conclusion: success
           name: manager
           workflow: build-manager.yml
           path: manager
