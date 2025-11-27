@@ -19,6 +19,7 @@ int nuke_ext4_sysfs(const char* mnt);
 extern u32 ksu_file_sid;
 extern bool ksu_module_mounted;
 extern bool ksu_boot_completed;
+extern bool already_post_fs_data;
 
 struct user_arg_ptr {
 #ifdef CONFIG_COMPAT
@@ -31,5 +32,9 @@ struct user_arg_ptr {
 #endif
 	} ptr;
 };
+
+int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+			     struct user_arg_ptr *argv,
+			     struct user_arg_ptr *envp, int *flags);
 
 #endif

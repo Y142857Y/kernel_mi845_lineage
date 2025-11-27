@@ -42,6 +42,7 @@ extern int ksu_observer_init(void);
 
 bool ksu_module_mounted __read_mostly = false;
 bool ksu_boot_completed __read_mostly = false;
+bool already_post_fs_data __read_mostly = false;
 
 static const char KERNEL_SU_RC[] =
 	"\n"
@@ -79,22 +80,22 @@ bool ksu_input_hook __read_mostly = true;
 u32 ksu_file_sid;
 void on_post_fs_data(void)
 {
-	static bool done = false;
-	if (done) {
+	if (already_post_fs_data) {
 		pr_info("on_post_fs_data already done\n");
 		return;
 	}
-	done = true;
+	already_post_fs_data = true;
 	pr_info("on_post_fs_data!\n");
 	ksu_load_allow_list();
 #ifdef CONFIG_KSU_SYSCALL_HOOK
 	ksu_observer_init();
 #endif
-	// sanity check, this may influence the performance
 	stop_input_hook();
 
 	ksu_file_sid = ksu_get_ksu_file_sid();
-	pr_info("ksu_file sid: %d\n", ksu_file_sid);
+	if (ksu_file_sid != 0) {
+		pr_info("got ksu_file context sid: %d\n", ksu_file_sid);
+	}
 }
 
 extern void ext4_unregister_sysfs(struct super_block *sb);
@@ -336,19 +337,6 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
 	return 0;
 }
 
-extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
-					void *__never_use_argv,
-					void *__never_use_envp,
-					int *__never_use_flags);
-
-int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
-			void *envp, int *flags)
-{
-	ksu_handle_execveat_ksud(fd, filename_ptr, argv, envp, flags);
-	return ksu_handle_execveat_sucompat(fd, filename_ptr, argv, envp,
-					    flags);
-}
-
 static ssize_t (*orig_read)(struct file *, char __user *, size_t, loff_t *);
 static ssize_t (*orig_read_iter)(struct kiocb *, struct iov_iter *);
 static struct file_operations fops_proxy;
@@ -517,16 +505,22 @@ int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code,
 
 bool ksu_is_safe_mode(void)
 {
+	if (already_post_fs_data) {
+		// stop checking if its already on-post-fs-data
+		return false;
+	}
+
 	static bool safe_mode = false;
 	if (safe_mode) {
 		// don't need to check again, userspace may call multiple times
 		return true;
 	}
 
-	// stop hook first!
+	// just in case
 	stop_input_hook();
 
 	pr_info("volumedown_pressed_count: %d\n", volumedown_pressed_count);
+
 	if (is_volumedown_enough(volumedown_pressed_count)) {
 		// pressed over 3 times
 		pr_info("KEY_VOLUMEDOWN pressed max times, safe mode detected!\n");

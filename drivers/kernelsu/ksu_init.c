@@ -3,7 +3,6 @@
 #include <linux/printk.h>
 #include <linux/kobject.h>
 #include <linux/module.h>
-#include <linux/kconfig.h>
 #include <generated/utsrelease.h>
 #include <generated/compile.h>
 #include <linux/version.h> /* LINUX_VERSION_CODE, KERNEL_VERSION macros */
@@ -25,10 +24,7 @@
 #include "supercalls.h"
 
 #ifdef CONFIG_KSU_MANUAL_HOOK
-extern void ksu_lsm_hook_init(void);
-#endif
-#ifdef CONFIG_KSU_SYSCALL_HOOK
-extern void ksu_observer_exit(void);
+extern void __init ksu_lsm_hook_init(void);
 #endif
 
 int __init kernelsu_init(void)
@@ -67,13 +63,17 @@ int __init kernelsu_init(void)
 
 	ksu_ksud_init();
 
-#if IS_MODULE(CONFIG_KSU)
+#ifdef MODULE
 #ifndef CONFIG_KSU_DEBUG
 	kobject_del(&THIS_MODULE->mkobj.kobj);
 #endif
 #endif
 	return 0;
 }
+
+#ifdef CONFIG_KSU_SYSCALL_HOOK
+extern void ksu_observer_exit(void);
+#endif
 
 void kernelsu_exit(void)
 {

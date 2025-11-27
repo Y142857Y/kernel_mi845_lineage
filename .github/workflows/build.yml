@@ -3,6 +3,7 @@ name: 编译内核
 on:
   push:
     branches:
+      - dev/*
       - stable/*
   workflow_dispatch:
 
@@ -36,10 +37,9 @@ jobs:
           sudo apt install -y ${{ env.PACKAGES }} > /dev/null
 
       - name: 同步仓库
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: kernel
-          submodules: true
 
       - name: 缓存Clang
         id: cache-clang
@@ -132,7 +132,7 @@ jobs:
     needs: build
     steps:
       - name: 获取构建产物
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           path: kernel
           pattern: kernel-*
@@ -140,30 +140,49 @@ jobs:
 
       - name: 获取当前时间
         id: time
-        run: echo "time_now=UTC$(date -u +'%Y%m%d%H%M')" >> $GITHUB_OUTPUT
+        run: |
+          echo "time=$(TZ='Asia/Shanghai' date -u +'%Y%m%d%H%M')" >> $GITHUB_OUTPUT
+          echo "timestamp=$(date +%s)" >> $GITHUB_OUTPUT
 
       - name: 下载ci管理器
         continue-on-error: true
-        uses: dawidd6/action-download-artifact@v6
+        uses: dawidd6/action-download-artifact@v11
         with:
           repo: rsuntk/KernelSU
+          workflow_conclusion: success
           name: manager
           workflow: build-manager.yml
           path: manager
 
-      - name: 删除旧的release
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete release --repo ${{ github.repository }} --cleanup-tag
-
       - name: 发布
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: release
-          name: Kernel build ${{ steps.time.outputs.time_now }}
+          tag_name: rel-${{ steps.time.outputs.timestamp }}
+          name: Kernel build ${{ steps.time.outputs.time }}
+          prerelease: ${{ startsWith(github.ref_name, 'dev/') }}
           files: |
             kernel/*
             manager/*
 
+      - name: 发送Telegram通知
+        continue-on-error: true
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/rel-${{ steps.time.outputs.timestamp }}
+        run: |
+          msg="*CI ${{ steps.time.outputs.time }}*
+          > Branch/分支: \`${{ github.ref_name }}\`
+          \`\`\`
+          ${{ env.COMMIT_MESSAGE }}
+          \`\`\`
+          [Download/下载](${{ env.RELEASE_URL }})
+          [Commit/提交](${{ env.COMMIT_URL }})
+          [Run/工作流](${{ env.RUN_URL }})
+          "
+          curl -s https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
+                      -F 'chat_id="${{ secrets.TELEGRAM_CHAT_ID }}"' \
+                      -F 'message_thread_id=${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}' \
+                      -F 'parse_mode="markdownv2"' \
+                      -F "text=\"$msg\""
