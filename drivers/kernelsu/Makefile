@@ -1,4 +1,4 @@
-ksu_obj-y := ksu.o
+ksu_obj-y := ksu_init.o
 ksu_obj-y += allowlist.o
 ksu_obj-y += app_profile.o
 ksu_obj-y += apk_sign.o
@@ -6,7 +6,7 @@ ksu_obj-y += sucompat.o
 ksu_obj-y += throne_tracker.o
 ksu_obj-y += setuid_hook.o
 ksu_obj-$(CONFIG_KSU_MANUAL_HOOK) += lsm_hook.o
-ksu_obj-$(CONFIG_KSU_SYSCALL_HOOK) += kp_hook.o syscall_handler.o pkg_observer.o
+ksu_obj-$(CONFIG_KSU_SYSCALL_HOOK) += kp_hook.o kp_util.o syscall_handler.o pkg_observer.o
 ksu_obj-y += kernel_compat.o
 ksu_obj-y += kernel_umount.o
 ksu_obj-y += supercalls.o
@@ -25,7 +25,7 @@ ccflags-y += -I$(objtree)/security/selinux -include $(srctree)/include/uapi/asm-
 
 obj-$(CONFIG_KSU) += kernelsu.o
 
-ccflags-y += -DKSU_VERSION=22222
+ccflags-y += -DKSU_VERSION=22239
 
 # SELinux drivers check
 ifeq ($(shell grep -q "current_sid(void)" $(srctree)/security/selinux/include/objsec.h 2>/dev/null; echo $$?),0)
