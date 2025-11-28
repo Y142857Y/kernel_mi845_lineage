@@ -181,8 +181,12 @@ jobs:
           [Commit/提交](${{ env.COMMIT_URL }})
           [Run/工作流](${{ env.RUN_URL }})
           "
-          curl -s https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
+          message_id=$(curl -LSs https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
                       -F 'chat_id="${{ secrets.TELEGRAM_CHAT_ID }}"' \
                       -F 'message_thread_id=${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}' \
                       -F 'parse_mode="markdownv2"' \
-                      -F "text=\"$msg\""
+                      -F "text=\"$msg\"" | jq '.result.message_id')
+          [ "${{ startsWith(github.ref_name, 'stable/') }}" == "true" ] && \
+          curl https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/pinChatMessage \
+                      -F 'chat_id="@awkoo_discuss"' \
+                      -F message_id=$message_id
