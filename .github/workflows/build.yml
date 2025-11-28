@@ -188,5 +188,5 @@ jobs:
                       -F "text=\"$msg\"" | jq '.result.message_id')
           [ "${{ startsWith(github.ref_name, 'stable/') }}" == "true" ] && \
           curl https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/pinChatMessage \
-                      -F 'chat_id="@awkoo_discuss"' \
+                      -F 'chat_id="${{ secrets.TELEGRAM_CHAT_ID }}"' \
                       -F message_id=$message_id
