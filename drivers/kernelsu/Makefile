@@ -25,7 +25,7 @@ ccflags-y += -I$(objtree)/security/selinux -include $(srctree)/include/uapi/asm-
 
 obj-$(CONFIG_KSU) += kernelsu.o
 
-ccflags-y += -DKSU_VERSION=22239
+ccflags-y += -DKSU_VERSION=22246
 
 # SELinux drivers check
 ifeq ($(shell grep -q "current_sid(void)" $(srctree)/security/selinux/include/objsec.h 2>/dev/null; echo $$?),0)
@@ -61,8 +61,7 @@ ifeq ($(shell grep -q "task_security_struct\s\+\*selinux_cred" $(srctree)/securi
 ccflags-y += -DKSU_OPTIONAL_SELINUX_CRED
 endif
 
-# seccomp_types.h were added on 6.7
-ifeq ($(shell grep -q "atomic_t\s\+filter_count" $(srctree)/include/linux/seccomp.h $(srctree)/include/linux/seccomp_types.h 2>/dev/null; echo $$?),0)
+ifeq ($(shell grep -q "atomic_t\s\+filter_count" $(srctree)/include/linux/seccomp.h 2>/dev/null; echo $$?),0)
 ccflags-y += -DKSU_OPTIONAL_SECCOMP_FILTER_CNT
 endif
 
