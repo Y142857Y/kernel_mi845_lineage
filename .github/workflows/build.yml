@@ -77,6 +77,8 @@ jobs:
           CONFIG_FILES:
             vendor/xiaomi/mi845_defconfig
             vendor/xiaomi/${{ matrix.device }}.config
+          KBUILD_BUILD_USER: ${{ github.repository_owner }}
+          KBUILD_BUILD_HOST: github-runner
         run: |
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           make ${{ env.MAKE_ARGS }} ${{ env.CONFIG_FILES }} all
@@ -186,7 +188,7 @@ jobs:
                       -F 'message_thread_id=${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}' \
                       -F 'parse_mode="markdownv2"' \
                       -F "text=\"$msg\"" | jq '.result.message_id')
-          [ "${{ startsWith(github.ref_name, 'stable/') }}" == "true" ] && \
+          ! ${{ startsWith(github.ref_name, 'stable/') }} || \
           curl https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/pinChatMessage \
                       -F 'chat_id="${{ secrets.TELEGRAM_CHAT_ID }}"' \
                       -F message_id=$message_id
