@@ -177,7 +177,7 @@ jobs:
           msg="*CI ${{ steps.time.outputs.time }}*
           > Branch/分支: \`${{ github.ref_name }}\`
           \`\`\`
-          ${{ env.COMMIT_MESSAGE }}
+          $COMMIT_MESSAGE
           \`\`\`
           [Download/下载](${{ env.RELEASE_URL }})
           [Commit/提交](${{ env.COMMIT_URL }})
