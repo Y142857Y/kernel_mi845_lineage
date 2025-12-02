@@ -179,16 +179,16 @@ jobs:
           \`\`\`
           $COMMIT_MESSAGE
           \`\`\`
-          [Download/下载](${{ env.RELEASE_URL }})
-          [Commit/提交](${{ env.COMMIT_URL }})
-          [Run/工作流](${{ env.RUN_URL }})
+          [Download/下载]($RELEASE_URL)
+          [Commit/提交]($COMMIT_URL)
+          [Run/工作流]($RUN_URL)
           "
-          message_id=$(curl -LSs https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
+          curl -LSs https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
                       -F 'chat_id="${{ secrets.TELEGRAM_CHAT_ID }}"' \
                       -F 'message_thread_id=${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}' \
                       -F 'parse_mode="markdownv2"' \
-                      -F "text=\"$msg\"" | jq '.result.message_id')
+                      -F "text=\"$msg\"" | tee Markdown.txt
           ! ${{ startsWith(github.ref_name, 'stable/') }} || \
           curl https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/pinChatMessage \
                       -F 'chat_id="${{ secrets.TELEGRAM_CHAT_ID }}"' \
-                      -F message_id=$message_id
+                      -F message_id=$(jq '.result.message_id' Markdown.txt)
