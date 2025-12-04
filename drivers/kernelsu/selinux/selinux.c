@@ -4,17 +4,13 @@
 #include "linux/version.h"
 #include "selinux_defs.h"
 #include "../klog.h" // IWYU pragma: keep
+#include "../ksu.h"
 
-#define KERNEL_SU_DOMAIN "u:r:su:s0"
-
-static int transive_to_domain(const char *domain)
+static int transive_to_domain(const char *domain, struct cred *cred)
 {
-	struct cred *cred;
 	selinux_security_struct *sec;
 	u32 sid;
 	int error;
-
-	cred = (struct cred *)__task_cred(current);
 
 	sec = selinux_cred(cred);
 	if (!sec) {
@@ -48,8 +44,8 @@ is_ksu_transition(const struct task_security_struct *old_tsec,
 	bool allowed = false;
 
 	if (!ksu_sid) {
-		err = security_secctx_to_secid(KERNEL_SU_DOMAIN,
-					 strlen(KERNEL_SU_DOMAIN), &ksu_sid);
+		err = security_secctx_to_secid(
+			KERNEL_SU_CONTEXT, strlen(KERNEL_SU_CONTEXT), &ksu_sid);
 		pr_err("failed to get ksu_sid: %d\n", err);
 	}
 
@@ -64,9 +60,16 @@ is_ksu_transition(const struct task_security_struct *old_tsec,
 
 void setup_selinux(const char *domain)
 {
-	if (transive_to_domain(domain)) {
+	if (transive_to_domain(domain, (struct cred *)__task_cred(current))) {
 		pr_err("transive domain failed.\n");
 		return;
+	}
+}
+
+void setup_ksu_cred(void)
+{
+	if (ksu_cred && transive_to_domain(KERNEL_SU_CONTEXT, ksu_cred)) {
+		pr_err("setup ksu cred failed.\n");
 	}
 }
 
@@ -87,14 +90,14 @@ bool getenforce(void)
 bool is_context(const struct cred *cred, const char *context)
 {
 	const selinux_security_struct *sec;
-	struct lsm_context ctx = {0};
+	struct lsm_context ctx = { 0 };
 	bool result = false;
 	int err;
 
 	if (!cred) {
 		return result;
 	}
-	
+
 	sec = selinux_cred(cred);
 	if (!sec) {
 		pr_err("cred->security == NULL\n");
@@ -114,7 +117,7 @@ bool is_context(const struct cred *cred, const char *context)
 
 bool is_task_ksu_domain(const struct cred *cred)
 {
-	return is_context(cred, KERNEL_SU_DOMAIN);
+	return is_context(cred, KERNEL_SU_CONTEXT);
 }
 
 bool is_ksu_domain(void)
@@ -133,13 +136,11 @@ bool is_init(const struct cred *cred)
 	return is_context(cred, "u:r:init:s0");
 }
 
-#define KSU_FILE_DOMAIN "u:object_r:ksu_file:s0"
-
 u32 ksu_get_ksu_file_sid(void)
 {
 	u32 ksu_file_sid = 0;
-	int err = security_secctx_to_secid(KSU_FILE_DOMAIN,
-		strlen(KSU_FILE_DOMAIN), &ksu_file_sid);
+	int err = security_secctx_to_secid(
+		KSU_FILE_CONTEXT, strlen(KSU_FILE_CONTEXT), &ksu_file_sid);
 
 	if (err) {
 		pr_info("get ksufile sid err %d\n", err);
