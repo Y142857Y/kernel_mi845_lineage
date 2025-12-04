@@ -79,6 +79,8 @@ jobs:
             vendor/xiaomi/${{ matrix.device }}.config
         run: |
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
+          export KBUILD_BUILD_USER=${{ github.repository_owner }}
+          export KBUILD_BUILD_HOST=github-runner
           make ${{ env.MAKE_ARGS }} ${{ env.CONFIG_FILES }} all
 
       - name: 打包(AnyKernel3)
@@ -175,18 +177,18 @@ jobs:
           msg="*CI ${{ steps.time.outputs.time }}*
           > Branch/分支: \`${{ github.ref_name }}\`
           \`\`\`
-          ${{ env.COMMIT_MESSAGE }}
+          $COMMIT_MESSAGE
           \`\`\`
-          [Download/下载](${{ env.RELEASE_URL }})
-          [Commit/提交](${{ env.COMMIT_URL }})
-          [Run/工作流](${{ env.RUN_URL }})
+          [Download/下载]($RELEASE_URL)
+          [Commit/提交]($COMMIT_URL)
+          [Run/工作流]($RUN_URL)
           "
-          message_id=$(curl -LSs https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
+          curl -LSs https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
                       -F 'chat_id="${{ secrets.TELEGRAM_CHAT_ID }}"' \
                       -F 'message_thread_id=${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}' \
                       -F 'parse_mode="markdownv2"' \
-                      -F "text=\"$msg\"" | jq '.result.message_id')
-          [ "${{ startsWith(github.ref_name, 'stable/') }}" == "true" ] && \
+                      -F "text=\"$msg\"" | tee Markdown.txt
+          ! ${{ startsWith(github.ref_name, 'stable/') }} || \
           curl https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/pinChatMessage \
-                      -F 'chat_id="@awkoo_discuss"' \
-                      -F message_id=$message_id
+                      -F 'chat_id="${{ secrets.TELEGRAM_CHAT_ID }}"' \
+                      -F message_id=$(jq '.result.message_id' Markdown.txt)
