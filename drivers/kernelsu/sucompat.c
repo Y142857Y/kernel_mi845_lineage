@@ -125,7 +125,7 @@ static int do_execve_sucompat_for_kp(const char __user **filename_user)
 {
 	char path[sizeof(su) + 1];
 
-	if (!ksu_strncpy_retry(filename_user, path, sizeof(path), true))
+	if (!ksu_retry_filename_access(filename_user, path, sizeof(path), true))
 		return 0;
 	if (likely(memcmp(path, su, sizeof(su))))
 		return 0;
@@ -137,6 +137,11 @@ static int do_execve_sucompat_for_kp(const char __user **filename_user)
 
 	return 0;
 }
+#define handle_execve_sucompat(filename_ptr)                                   \
+	(do_execve_sucompat_for_kp(filename_ptr))
+#else
+#define handle_execve_sucompat(filename_ptr)                                   \
+	(ksu_sucompat_user_common(filename_ptr, "sys_execve", true))
 #endif
 
 int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
@@ -163,11 +168,7 @@ int ksu_handle_execve_sucompat(int *fd, const char __user **filename_user,
 	if (!is_su_allowed(filename_user))
 		return 0;
 
-#ifdef CONFIG_KSU_SYSCALL_HOOK
-	return do_execve_sucompat_for_kp(filename_user);
-#else
-	return ksu_sucompat_user_common(filename_user, "sys_execve", true);
-#endif
+	return handle_execve_sucompat(filename_user);
 }
 
 int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
@@ -197,9 +198,7 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
 int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
 			void *envp, int *flags)
 {
-	if (ksu_handle_execveat_ksud(fd, filename_ptr, argv, envp, flags)) {
-		return 0;
-	}
+	ksu_handle_execveat_ksud(fd, filename_ptr, argv, envp, flags);
 	return ksu_handle_execveat_sucompat(fd, filename_ptr, argv, envp,
 					    flags);
 }
