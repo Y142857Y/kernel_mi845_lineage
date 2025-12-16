@@ -32,11 +32,6 @@ extern void __init ksu_lsm_hook_init(void);
 
 int __init kernelsu_init(void)
 {
-#ifndef DDK_ENV
-	pr_info("Initialized on: %s (%s) with driver version: %u\n",
-		UTS_RELEASE, UTS_MACHINE, KSU_VERSION);
-#endif
-
 #ifdef CONFIG_KSU_DEBUG
 	pr_alert("*************************************************************");
 	pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
