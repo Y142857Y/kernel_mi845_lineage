@@ -3,9 +3,6 @@
 
 #include "selinux.h"
 #include "objsec.h"
-#ifdef SAMSUNG_SELINUX_PORTING
-#include "security.h" // Samsung SELinux Porting
-#endif
 #ifndef KSU_COMPAT_USE_SELINUX_STATE
 #include "avc.h"
 #endif
@@ -28,7 +25,7 @@ static inline bool is_selinux_enforcing(void)
 #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
 #ifdef KSU_COMPAT_USE_SELINUX_STATE
 	return selinux_state.enforcing;
-#elif defined(SAMSUNG_SELINUX_PORTING) || !defined(KSU_COMPAT_USE_SELINUX_STATE)
+#elif !defined(KSU_COMPAT_USE_SELINUX_STATE)
 	return selinux_enforcing;
 #endif
 #else

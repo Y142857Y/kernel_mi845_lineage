@@ -31,7 +31,6 @@
 #include "kernel_umount.h"
 #include "manager.h"
 #include "selinux/selinux.h"
-#include "objsec.h"
 #include "file_wrapper.h"
 
 // Permission check functions
@@ -341,17 +340,6 @@ static int do_set_feature(void __user *arg)
 	return 0;
 }
 
-// kcompat for older kernel
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
-#define getfd_secure anon_inode_create_getfd
-#elif defined(KSU_HAS_GETFD_SECURE)
-#define getfd_secure anon_inode_getfd_secure
-#else
-// technically not a secure inode, but, this is the only way so.
-#define getfd_secure(name, ops, data, flags, __unused)                         \
-	anon_inode_getfd(name, ops, data, flags)
-#endif
-
 static int do_get_wrapper_fd(void __user *arg)
 {
 	if (!ksu_file_sid) {
@@ -359,56 +347,12 @@ static int do_get_wrapper_fd(void __user *arg)
 	}
 
 	struct ksu_get_wrapper_fd_cmd cmd;
-	int ret;
-
 	if (copy_from_user(&cmd, arg, sizeof(cmd))) {
 		pr_err("get_wrapper_fd: copy_from_user failed\n");
 		return -EFAULT;
 	}
 
-	struct file *f = fget(cmd.fd);
-	if (!f) {
-		return -EBADF;
-	}
-
-	struct ksu_file_wrapper *data = ksu_create_file_wrapper(f);
-	if (data == NULL) {
-		ret = -ENOMEM;
-		goto put_orig_file;
-	}
-
-	ret = getfd_secure("[ksu_fdwrapper]", &data->ops, data, f->f_flags,
-			   NULL);
-	if (ret < 0) {
-		pr_err("ksu_fdwrapper: getfd failed: %d\n", ret);
-		goto put_wrapper_data;
-	}
-	struct file *pf = fget(ret);
-
-	struct inode *wrapper_inode = file_inode(pf);
-	// copy original inode mode
-	wrapper_inode->i_mode = file_inode(f)->i_mode;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0) ||                           \
-	defined(KSU_OPTIONAL_SELINUX_INODE)
-	struct inode_security_struct *sec = selinux_inode(wrapper_inode);
-#else
-	struct inode_security_struct *sec =
-		(struct inode_security_struct *)wrapper_inode->i_security;
-#endif
-
-	if (sec) {
-		sec->sid = ksu_file_sid;
-	}
-
-	fput(pf);
-	goto put_orig_file;
-put_wrapper_data:
-	ksu_delete_file_wrapper(data);
-put_orig_file:
-	fput(f);
-
-	return ret;
+	return ksu_install_file_wrapper(cmd.fd);
 }
 
 static int do_manage_mark(void __user *arg)
@@ -760,11 +704,10 @@ static int ksu_handle_fd_request(void __user *arg)
 int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 			  void __user **arg)
 {
-	void __user *argp;
 	if (magic1 != KSU_INSTALL_MAGIC1)
 		return -EINVAL;
 
-	// Rare case
+	// Rare case that unlikely to happen
 	if (unlikely(!arg))
 		return -EINVAL;
 
@@ -772,8 +715,12 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 	pr_info("sys_reboot: magic: 0x%x (id: %d)\n", magic1, magic2);
 #endif
 
-	// Dereference **arg (\xx)
-	argp = (void __user *)*arg;
+	// Dereference **arg.. with IS_ERR check.
+	void __user *argp = (void __user *)*arg;
+	if (IS_ERR(argp)) {
+		pr_err("Failed to deref user arg, err: %lu\n", PTR_ERR(argp));
+		return PTR_ERR(argp);
+	}
 
 	// Check if this is a request to install KSU fd
 	if (magic2 == KSU_INSTALL_MAGIC2) {
