@@ -17,6 +17,8 @@
 #include <uapi/linux/android/binder.h>
 #include "rekernel.h"
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #define MIN_USERAPP_UID				10000
 #define MAX_SYSTEM_UID				2000
 #define SYSTEM_APP_UID				1000
