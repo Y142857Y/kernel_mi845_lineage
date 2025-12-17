@@ -1,3 +1,5 @@
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/init.h>
 #include <linux/types.h>
 
@@ -16,8 +18,6 @@
 #include <linux/proc_fs.h>
 #include <uapi/linux/android/binder.h>
 #include "rekernel.h"
-
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #define MIN_USERAPP_UID				10000
 #define MAX_SYSTEM_UID				2000
