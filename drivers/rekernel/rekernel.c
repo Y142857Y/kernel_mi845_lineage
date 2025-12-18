@@ -75,10 +75,10 @@ static void netlink_rcv_msg(struct sk_buff* socket_buffer) {
 
 	if (socket_buffer->len >= nlmsg_total_size(0)) {
 		nlhdr = nlmsg_hdr(socket_buffer);
-		umsg = NLMSG_DATA(nlhdr);
+		umsg = nlmsg_data(nlhdr);
 		if (umsg) {
 #ifdef CONFIG_PROC_FS
-			if (!strcmp(umsg, "#proc_remove")) {
+			if (!memcmp(umsg, "#proc_remove", nlmsg_len(nlhdr))) {
 				if (rekernel_dir) {
 					proc_remove(rekernel_dir);
 				}
