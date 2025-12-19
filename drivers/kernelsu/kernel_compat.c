@@ -10,6 +10,9 @@
 #else
 #include <linux/sched.h>
 #endif
+#include <linux/mm.h>
+#include <linux/slab.h>
+#include <linux/vmalloc.h>
 
 #include "klog.h" // IWYU pragma: keep
 #include "kernel_compat.h"
@@ -58,8 +61,7 @@ struct file *ksu_filp_open_compat(const char *filename, int flags, umode_t mode)
 ssize_t ksu_kernel_read_compat(struct file *p, void *buf, size_t count,
 			       loff_t *pos)
 {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0) ||                          \
-	defined(KSU_OPTIONAL_KERNEL_READ)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
 	return kernel_read(p, buf, count, pos);
 #else
 	loff_t offset = pos ? *pos : 0;
@@ -74,8 +76,7 @@ ssize_t ksu_kernel_read_compat(struct file *p, void *buf, size_t count,
 ssize_t ksu_kernel_write_compat(struct file *p, const void *buf, size_t count,
 				loff_t *pos)
 {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0) ||                          \
-	defined(KSU_OPTIONAL_KERNEL_WRITE)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
 	return kernel_write(p, buf, count, pos);
 #else
 	loff_t offset = pos ? *pos : 0;
@@ -90,8 +91,7 @@ ssize_t ksu_kernel_write_compat(struct file *p, const void *buf, size_t count,
 static inline long
 do_strncpy_user_nofault(char *dst, const void __user *unsafe_addr, long count)
 {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0) ||                           \
-	defined(KSU_OPTIONAL_STRNCPY)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
 	return strncpy_from_user_nofault(dst, unsafe_addr, count);
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
 	return strncpy_from_unsafe_user(dst, unsafe_addr, count);
@@ -147,6 +147,30 @@ long ksu_strncpy_from_user_nofault(char *dst, const void __user *unsafe_addr,
 #endif
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)
+int path_mount(const char *dev_name, struct path *path, const char *type_page,
+	       unsigned long flags, void *data_page)
+{
+	// 384 is enough
+	char buf[384] = { 0 };
+	mm_segment_t old_fs;
+	long ret;
+
+	// -1 on the size as implicit null termination
+	// as we zero init the thing
+	char *realpath = d_path(path, buf, sizeof(buf) - 1);
+	if (!(realpath && realpath != buf))
+		return -ENOENT;
+
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+	ret = do_mount(dev_name, (const char __user *)realpath, type_page,
+		       flags, data_page);
+	set_fs(old_fs);
+	return ret;
+}
+#endif
+
 int do_close_fd(unsigned int fd)
 {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 11, 0)
@@ -155,3 +179,45 @@ int do_close_fd(unsigned int fd)
 	return __close_fd(current->files, fd);
 #endif
 }
+
+static void *__kvmalloc(size_t size, gfp_t flags)
+{
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
+// https://elixir.bootlin.com/linux/v4.4.302/source/security/apparmor/lib.c#L79
+	void *buffer = NULL;
+
+	if (size == 0)
+		return NULL;
+
+	/* do not attempt kmalloc if we need more than 16 pages at once */
+	if (size <= (16 * PAGE_SIZE))
+		buffer = kmalloc(size, flags | GFP_NOIO | __GFP_NOWARN);
+	if (!buffer) {
+		if (flags & __GFP_ZERO)
+			buffer = vzalloc(size);
+		else
+			buffer = vmalloc(size);
+	}
+	return buffer;
+#else
+	return kvmalloc(size, flags);
+#endif
+}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
+// https://elixir.bootlin.com/linux/v5.10.247/source/mm/util.c#L664
+void *ksu_compat_kvrealloc(const void *p, size_t oldsize, size_t newsize,
+			   gfp_t flags)
+{
+	void *newp;
+
+	if (oldsize >= newsize)
+		return (void *)p;
+	newp = __kvmalloc(newsize, flags);
+	if (!newp)
+		return NULL;
+	memcpy(newp, p, oldsize);
+	kvfree(p);
+	return newp;
+}
+#endif

@@ -9,9 +9,7 @@
 #include <linux/path.h>
 #include <linux/printk.h>
 #include <linux/types.h>
-#ifndef KSU_HAS_PATH_UMOUNT
 #include <linux/syscalls.h>
-#endif
 
 #include "kernel_umount.h"
 #include "klog.h" // IWYU pragma: keep
@@ -45,8 +43,7 @@ static const struct ksu_feature_handler kernel_umount_handler = {
 	.set_handler = kernel_umount_feature_set,
 };
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0) ||                           \
-	defined(KSU_HAS_PATH_UMOUNT)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
 extern int path_umount(struct path *path, int flags);
 static int ksu_umount_mnt(const char *__never_use_mnt, struct path *path,
 			   int flags)

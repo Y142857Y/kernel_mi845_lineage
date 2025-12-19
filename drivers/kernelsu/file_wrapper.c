@@ -531,10 +531,6 @@ ksu_anon_inode_make_secure_inode(const char *name,
 				 const struct inode *context_inode)
 {
 	struct inode *inode;
-#ifdef KSU_COMPAT_HAS_INIT_SEC_ANON
-	int error;
-	const struct qstr qname = QSTR_INIT(name, strlen(name));
-#endif
 
 	if (unlikely(!anon_inode_mnt)) {
 		return ERR_PTR(-ENODEV);
@@ -544,13 +540,6 @@ ksu_anon_inode_make_secure_inode(const char *name,
 	if (IS_ERR(inode))
 		return inode;
 	inode->i_flags &= ~S_PRIVATE;
-#ifdef KSU_COMPAT_HAS_INIT_SEC_ANON
-	error = security_inode_init_security_anon(inode, &qname, context_inode);
-	if (error) {
-		iput(inode);
-		return ERR_PTR(error);
-	}
-#endif
 	return inode;
 }
 
@@ -634,8 +623,7 @@ int ksu_install_file_wrapper(int fd)
 	// libc's stdio relies on the fstat() result of the fd to determine its buffer type.
 	wrapper_inode->i_mode = file_inode(orig_file)->i_mode;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0) ||                           \
-	defined(KSU_OPTIONAL_SELINUX_INODE)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0)
 	struct inode_security_struct *wrapper_sec =
 		selinux_inode(wrapper_inode);
 #else
