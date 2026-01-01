@@ -8,6 +8,7 @@
 #if IS_ENABLED(CONFIG_IPV6)
 #include <net/ipv6.h>
 #endif /* IS_ENABLED(CONFIG_IPV6) */
+#include <linux/tcp.h>
 #include <linux/netlink.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
@@ -96,6 +97,8 @@ static unsigned int rekernel_pkg_ipv4_ipv6_in(void* priv, struct sk_buff* socket
 	uid_t uid;
 	uint hook;
 	struct net_device* dev = NULL;
+	struct tcphdr *th;
+	int data_len = 0;
 
 	if (!socket_buffer || !socket_buffer->len || !state)
 		return NF_ACCEPT;
@@ -108,12 +111,22 @@ static unsigned int rekernel_pkg_ipv4_ipv6_in(void* priv, struct sk_buff* socket
 		return NF_ACCEPT;
 
 	if (ip_hdr(socket_buffer)->version == 4) {
-		if (ip_hdr(socket_buffer)->protocol != IPPROTO_TCP)
+		struct iphdr *iph4 = ip_hdr(socket_buffer);
+		if (iph4->protocol != IPPROTO_TCP)
 			return NF_ACCEPT;
+		if (!pskb_may_pull(socket_buffer, (iph4->ihl << 2) + sizeof(struct tcphdr)))
+			return NF_ACCEPT;
+		th = (struct tcphdr *)((unsigned char *)iph4 + (iph4->ihl << 2));
+		data_len = ntohs(iph4->tot_len) - (iph4->ihl << 2) - (th->doff << 2);
 #if IS_ENABLED(CONFIG_IPV6)
 	} else if (ip_hdr(socket_buffer)->version == 6) {
+		struct ipv6hdr *iph6 = ipv6_hdr(socket_buffer);
 		if (ipv6_find_hdr(socket_buffer, &thoff, -1, &frag_off, NULL) != IPPROTO_TCP)
 			return NF_ACCEPT;
+		if (!pskb_may_pull(socket_buffer, thoff + sizeof(struct tcphdr)))
+			return NF_ACCEPT;
+		th = (struct tcphdr *)(skb_network_header(socket_buffer) + thoff);
+		data_len = ntohs(iph6->payload_len) - (thoff - sizeof(struct ipv6hdr)) - (th->doff << 2);
 #endif
 	} else {
 		return NF_ACCEPT;
@@ -127,7 +140,10 @@ static unsigned int rekernel_pkg_ipv4_ipv6_in(void* priv, struct sk_buff* socket
 	if (uid < MIN_USERAPP_UID)
 		return NF_ACCEPT;
 
-	rekernel_report(NETWORK, 0, ip_hdr(socket_buffer)->version, NULL, uid, NULL, true, NULL);
+	if (data_len <= 0 && !th->syn && !th->fin && !th->rst)
+		return NF_ACCEPT;
+
+	rekernel_report(NETWORK, ip_hdr(socket_buffer)->version, data_len, NULL, uid, NULL, true, NULL);
 	return NF_ACCEPT;
 }
 /* Only monitor input network packages */
@@ -195,7 +211,7 @@ static int start_rekernel(void) {
 #ifdef CONFIG_REKERNEL_NETWORK
 	pr_info("NetFilter is enabled!\n");
 #endif
-	pr_info("Re:Kernel v8.5 | DEVELOPER: Sakion Team | Timeline | USER PORT: %d\n", USER_PORT);
+	pr_info("Re:Kernel v8.6 | DEVELOPER: Sakion Team | Timeline | USER PORT: %d\n", USER_PORT);
 	pr_info("Trying to create Re:Kernel Server......\n");
 
 	for (netlink_unit = NETLINK_REKERNEL_MIN; netlink_unit < NETLINK_REKERNEL_MAX; netlink_unit++) {
@@ -247,7 +263,7 @@ void rekernel_report(int reporttype, int type, pid_t src_pid, struct task_struct
 #ifdef CONFIG_REKERNEL_NETWORK
 	if (reporttype == NETWORK) {
 		char binder_kmsg[PACKET_SIZE];
-		snprintf(binder_kmsg, sizeof(binder_kmsg), "type=Network,target=%d,proto=ipv%d;", dst_pid, src_pid);
+		snprintf(binder_kmsg, sizeof(binder_kmsg), "type=Network,target=%d,proto=ipv%d,data_len=%d;", dst_pid, type, src_pid);
 		sendMessage(binder_kmsg, strlen(binder_kmsg));
 		return;
 	}
