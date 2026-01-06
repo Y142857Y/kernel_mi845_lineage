@@ -25,7 +25,7 @@ static inline bool is_selinux_enforcing(void)
 #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
 #ifdef KSU_COMPAT_USE_SELINUX_STATE
 	return selinux_state.enforcing;
-#elif !defined(KSU_COMPAT_USE_SELINUX_STATE)
+#else
 	return selinux_enforcing;
 #endif
 #else

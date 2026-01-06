@@ -81,7 +81,6 @@ bool ksu_execveat_hook __read_mostly = true;
 bool ksu_input_hook __read_mostly = true;
 #endif
 
-u32 ksu_file_sid;
 void on_post_fs_data(void)
 {
 	static bool already_post_fs_data = false;
@@ -98,11 +97,6 @@ void on_post_fs_data(void)
 	ksu_observer_init();
 #endif
 	stop_input_hook();
-
-	ksu_file_sid = ksu_get_ksu_file_sid();
-	if (ksu_file_sid != 0) {
-		pr_info("got ksu_file context sid: %d\n", ksu_file_sid);
-	}
 }
 
 extern void ext4_unregister_sysfs(struct super_block *sb);
@@ -217,6 +211,7 @@ static struct callback_head on_post_fs_data_cb = {
 static inline void handle_second_stage(void)
 {
 	apply_kernelsu_rules();
+	cache_sid();
 	setup_ksu_cred();
 }
 
@@ -225,19 +220,30 @@ static bool check_argv(struct user_arg_ptr argv, int index,
 {
 	const char __user *p;
 	int argc;
+	long ret;
 
 	argc = count(argv, MAX_ARG_STRINGS);
-	if (argc <= index)
+	if (argc <= index) {
 		return false;
+	}
 
 	p = get_user_arg_ptr(argv, index);
-	if (!p || IS_ERR(p))
+	if (IS_ERR_OR_NULL(p)) {
+		if (PTR_ERR(p)) {
+			pr_err("check_argv: invalid user pointer, err: %ld\n",
+			       PTR_ERR(p));
+		}
 		return false;
+	}
 
-	if (ksu_strncpy_from_user_nofault(buf, p, buf_len) <= 0)
+	ret = ksu_strncpy_from_user_nofault(buf, p, buf_len);
+	if (ret <= 0) {
+		pr_err("check_argv: failed to copy pointer, err: %ld\n", ret);
 		return false;
+	}
 
 	buf[buf_len - 1] = '\0';
+
 	return !strcmp(buf, expected);
 }
 
@@ -332,7 +338,8 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
 					     !strcmp(env_value, "true"))) {
 						pr_info("/init second_stage executed\n");
 						handle_second_stage();
-						init_second_stage_executed = true;
+						init_second_stage_executed =
+							true;
 					}
 				}
 			}

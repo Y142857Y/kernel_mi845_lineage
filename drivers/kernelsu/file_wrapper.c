@@ -540,6 +540,7 @@ ksu_anon_inode_make_secure_inode(const char *name,
 	if (IS_ERR(inode))
 		return inode;
 	inode->i_flags &= ~S_PRIVATE;
+
 	return inode;
 }
 
