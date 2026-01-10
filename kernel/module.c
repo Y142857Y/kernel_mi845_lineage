@@ -1324,14 +1324,14 @@ static inline int check_modstruct_version(Elf_Shdr *sechdrs,
 	 * locking is necessary -- use preempt_disable() to placate lockdep.
 	 */
 	preempt_disable();
-	if (!find_symbol(VMLINUX_SYMBOL_STR(module_layout), NULL,
+	if (!find_symbol(__stringify(module_layout), NULL,
 			 &crc, true, false)) {
 		preempt_enable();
 		BUG();
 	}
 	preempt_enable();
 	return check_version(sechdrs, versindex,
-			     VMLINUX_SYMBOL_STR(module_layout), mod, crc,
+			     __stringify(module_layout), mod, crc,
 			     NULL);
 }
 
