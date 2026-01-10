@@ -1,28 +1,24 @@
-ksu_obj-y := ksuinit.o
-ksu_obj-y += allowlist.o
-ksu_obj-y += app_profile.o
-ksu_obj-y += apk_sign.o
-ksu_obj-y += sucompat.o
-ksu_obj-y += throne_tracker.o
-ksu_obj-y += setuid_hook.o
-ksu_obj-y += kernel_compat.o
-ksu_obj-y += kernel_umount.o
-ksu_obj-y += supercalls.o
-ksu_obj-y += feature.o
-ksu_obj-y += ksud.o
-ksu_obj-y += file_wrapper.o
-ksu_obj-y += su_mount_ns.o
-ksu_obj-y += shim.o
-ksu_obj-y += selinux/selinux.o
-ksu_obj-y += selinux/sepolicy.o
-ksu_obj-y += selinux/rules.o
-
-kernelsu-objs := $(ksu_obj-y)
+obj-y += ksuinit.o
+obj-y += allowlist.o
+obj-y += app_profile.o
+obj-y += apk_sign.o
+obj-y += sucompat.o
+obj-y += throne_tracker.o
+obj-y += setuid_hook.o
+obj-y += kernel_compat.o
+obj-y += kernel_umount.o
+obj-y += supercalls.o
+obj-y += feature.o
+obj-y += ksud.o
+obj-y += file_wrapper.o
+obj-y += su_mount_ns.o
+obj-y += shim.o
+obj-y += selinux/selinux.o
+obj-y += selinux/sepolicy.o
+obj-y += selinux/rules.o
 
 ccflags-y += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include
 ccflags-y += -I$(objtree)/security/selinux -include $(srctree)/include/uapi/asm-generic/errno.h
-
-obj-$(CONFIG_KSU) += kernelsu.o
 
 ccflags-y += -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat
 ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-missing-prototypes
