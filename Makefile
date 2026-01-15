@@ -218,37 +218,46 @@ export srctree objtree VPATH
 
 version_h := include/generated/uapi/linux/version.h
 
-no-dot-config-targets := clean mrproper distclean \
+clean-targets := %clean mrproper cleandocs
+no-dot-config-targets := $(clean-targets) \
 			 cscope gtags TAGS tags help% %docs check% coccicheck \
 			 $(version_h) headers_% archheaders archscripts \
-			 kernelversion %src-pkg
+			 %asm-generic kernelversion %src-pkg
 
-config-targets := 0
-mixed-targets  := 0
-dot-config     := 1
+config-build	:=
+mixed-build	:=
+need-config	:= 1
 
 ifneq ($(filter $(no-dot-config-targets), $(MAKECMDGOALS)),)
-	ifeq ($(filter-out $(no-dot-config-targets), $(MAKECMDGOALS)),)
-		dot-config := 0
-	endif
+    ifeq ($(filter-out $(no-dot-config-targets), $(MAKECMDGOALS)),)
+        need-config :=
+    endif
 endif
 
 ifeq ($(KBUILD_EXTMOD),)
-        ifneq ($(filter config %config,$(MAKECMDGOALS)),)
-                config-targets := 1
-                ifneq ($(words $(MAKECMDGOALS)),1)
-                        mixed-targets := 1
-                endif
+    ifneq ($(filter %config,$(MAKECMDGOALS)),)
+        config-build := 1
+        ifneq ($(words $(MAKECMDGOALS)),1)
+            mixed-build := 1
         endif
-endif
-# install and modules_install need also be processed one by one
-ifneq ($(filter install,$(MAKECMDGOALS)),)
-        ifneq ($(filter modules_install,$(MAKECMDGOALS)),)
-	        mixed-targets := 1
-        endif
+    endif
 endif
 
-ifeq ($(mixed-targets),1)
+# For "make -j clean all", "make -j mrproper defconfig all", etc.
+ifneq ($(filter $(clean-targets),$(MAKECMDGOALS)),)
+    ifneq ($(filter-out $(clean-targets),$(MAKECMDGOALS)),)
+        mixed-build := 1
+    endif
+endif
+
+# install and modules_install need also be processed one by one
+ifneq ($(filter install,$(MAKECMDGOALS)),)
+    ifneq ($(filter modules_install,$(MAKECMDGOALS)),)
+        mixed-build := 1
+    endif
+endif
+
+ifdef mixed-build
 # ===========================================================================
 # We're called with mixed targets (*config and build targets).
 # Handle them one by one.
@@ -264,7 +273,7 @@ __build_one_by_one:
 		$(MAKE) -f $(srctree)/Makefile $$i; \
 	done
 
-else
+else # !mixed-build
 
 # We need some generic definitions (do not try to remake the file).
 scripts/Kbuild.include: ;
@@ -501,7 +510,7 @@ endif
 
 
 
-ifeq ($(config-targets),1)
+ifdef config-build
 # ===========================================================================
 # *config targets only - make sure prerequisites are updated, and descend
 # in scripts/kconfig to make the *config target
@@ -579,7 +588,7 @@ core-y		:= usr/
 virt-y		:= virt/
 endif # KBUILD_EXTMOD
 
-ifeq ($(dot-config),1)
+ifdef need-config
 # Read in config
 -include include/config/auto.conf
 
@@ -616,7 +625,7 @@ endif # KBUILD_EXTMOD
 else
 # Dummy target needed, because used as prerequisite
 include/config/auto.conf: ;
-endif # $(dot-config)
+endif # need-config
 
 # For the kernel to actually contain only the needed exported symbols,
 # we have to build modules as well to determine what those symbols are.
@@ -1667,8 +1676,8 @@ namespacecheck:
 export_report:
 	$(PERL) $(srctree)/scripts/export_report.pl
 
-endif #ifeq ($(config-targets),1)
-endif #ifeq ($(mixed-targets),1)
+endif # config-build
+endif # mixed-build
 
 PHONY += checkstack kernelrelease kernelversion image_name
 
