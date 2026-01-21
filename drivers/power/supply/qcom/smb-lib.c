@@ -3401,11 +3401,16 @@ int smblib_set_prop_pd_current_max(struct smb_charger *chg,
 				    const union power_supply_propval *val)
 {
 	int rc;
+	int icl_ua = val->intval;
 
-	if (chg->pd_active)
-		rc = vote(chg->usb_icl_votable, PD_VOTER, true, val->intval);
-	else
+	if (chg->pd_active) {
+		if (icl_ua > chg->param.usb_icl.max_u) {
+			icl_ua = chg->param.usb_icl.max_u;
+		}
+		rc = vote(chg->usb_icl_votable, PD_VOTER, true, icl_ua);
+	} else {
 		rc = -EPERM;
+	}
 
 	return rc;
 }
