@@ -3,8 +3,6 @@
 #include <linux/printk.h>
 #include <linux/kobject.h>
 #include <linux/module.h>
-#include <generated/utsrelease.h>
-#include <generated/compile.h>
 #include <linux/version.h> /* LINUX_VERSION_CODE, KERNEL_VERSION macros */
 
 #include "allowlist.h"

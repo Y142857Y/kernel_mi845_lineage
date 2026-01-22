@@ -9,7 +9,6 @@
 #include <linux/kconfig.h>
 #include <linux/version.h>
 #include <linux/types.h>
-#include <generated/utsrelease.h>
 
 #ifdef RHEL_MAJOR
 #if RHEL_MAJOR == 7
