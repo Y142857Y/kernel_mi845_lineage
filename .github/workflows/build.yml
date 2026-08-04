@@ -20,11 +20,22 @@ jobs:
     strategy:
       matrix:
         device:
+          - beryllium
+          - dipper
+          - equuleus
+          - perseus
+          - polaris
           - ursa
     steps:
-       - name: 替换为 SukiSU Ultra
+      - name: 同步仓库
+        uses: actions/checkout@main
+        with:
+          path: kernel
+
+      - name: 替换为 SukiSU Ultra
         working-directory: kernel
         run: |
+          rm -rf drivers/kernelsu KernelSU
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
 
-     
+    
