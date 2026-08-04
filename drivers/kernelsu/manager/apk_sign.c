@@ -35,9 +35,6 @@ module_param_cb(ksu_debug_manager_appid, &expected_size_ops,
 	&ksu_debug_manager_appid, S_IRUSR | S_IWUSR);
 
 #endif
-
-// 导出给 KernelSU 其他模块调用的签名校验函数 Stub
-// 直接返回 true，彻底跳过实际的计算与文件读取
 bool check_v2_signature(char *path, unsigned expected_size, const char *expected_sha256)
 {
 	(void)path;
@@ -89,12 +86,28 @@ int get_pkg_from_apk_path(char *pkg, const char *path)
 
 	return 0;
 }
+static bool simple_contains(const char *haystack, const char *needle)
+{
+	int i, j;
+	if (!haystack || !needle)
+		return false;
+
+	for (i = 0; haystack[i] != '\0'; i++) {
+		for (j = 0; needle[j] != '\0'; j++) {
+			if (haystack[i + j] == '\0' || haystack[i + j] != needle[j])
+				break;
+		}
+		if (needle[j] == '\0')
+			return true;
+	}
+	return false;
+}
 
 bool is_manager_apk(char *path)
 {
 	if (!path)
 		return false;
-	if (strstr(path, "me.weishu.kernelsu") || strstr(path, "com.ripes.kernelsu")) {
+	if (simple_contains(path, "me.weishu.kernelsu") || simple_contains(path, "com.ripes.kernelsu")) {
 		return true;
 	}
 	return false;
