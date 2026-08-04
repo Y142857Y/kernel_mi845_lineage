@@ -40,6 +40,19 @@ jobs:
         uses: actions/checkout@main
         with:
           path: kernel
+      - name: 同步仓库
+        uses: actions/checkout@main
+        with:
+          path: kernel
+
+      - name: 替换为 SukiSU Ultra
+        working-directory: kernel
+        run: |
+          rm -f drivers/kernelsu
+          rm -rf KernelSU
+          sed -i '/kernelsu/d' drivers/Makefile
+          sed -i '/drivers\/kernelsu\/Kconfig/d' drivers/Kconfig
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
 
       - name: 缓存Clang
         id: cache-clang
