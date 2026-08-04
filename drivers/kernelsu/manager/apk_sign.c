@@ -1,6 +1,8 @@
 static bool check_block(struct file *fp, u32 *size4, loff_t *pos, u32 *offset,
 			unsigned expected_size, const char *expected_sha256)
 {
+	(void)expected_size;
+
 	kernel_read(fp, size4, 0x4, pos); // signer-sequence length
 	kernel_read(fp, size4, 0x4, pos); // signer length
 	kernel_read(fp, size4, 0x4, pos); // signed data length
@@ -16,12 +18,13 @@ static bool check_block(struct file *fp, u32 *size4, loff_t *pos, u32 *offset,
 	kernel_read(fp, size4, 0x4, pos); // certificate length
 
 	*offset += 0x4 * 2;
-	*offset += *size4;
 
 	if (*size4 > 2048) {
 		pr_info("cert length overlimit: %u\n", *size4);
 		return false;
 	}
+
+	*offset += *size4;
 
 	char *cert = kzalloc(*size4, GFP_KERNEL);
 	if (!cert)
@@ -49,7 +52,9 @@ static bool check_block(struct file *fp, u32 *size4, loff_t *pos, u32 *offset,
 
 	return strcmp(expected_sha256, hash_str) == 0;
 }
-    bool is_manager_apk(char *path)
+
+
+bool is_manager_apk(char *path)
 {
 	return (
 		check_v2_signature(path, 0,
