@@ -5,6 +5,7 @@ on:
     branches:
       - dev/*
       - stable/*
+      - Suki/*
   workflow_dispatch:
 
 env:
