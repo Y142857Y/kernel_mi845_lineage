@@ -14,7 +14,7 @@
 #define KSU_MAX_PACKAGE_NAME 256
 #endif
 
-
+__attribute__((used)) __attribute__((noinline))
 bool check_v2_signature(char *path, unsigned expected_size,
 			const char *expected_sha256)
 {
