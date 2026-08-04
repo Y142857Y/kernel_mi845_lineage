@@ -229,7 +229,7 @@ static __always_inline bool check_v2_signature(char *path,
 		goto clean;
 	}
 
-	int loop_count = 0;
+    int loop_count = 0;
 	while (loop_count++ < 10) {
 		uint32_t id;
 		uint32_t offset;
@@ -237,6 +237,11 @@ static __always_inline bool check_v2_signature(char *path,
 		if (size8 == size_of_block) {
 			break;
 		}
+		
+		// 【修改点 1】：记录下一个 block 的绝对起始位置
+		// 此时 pos 刚好读完 size8，pos + size8 就是下一个 block 的开头
+		loff_t next_block_pos = pos + size8;
+
 		kernel_read(fp, &id, 0x4, &pos); // id
 		offset = 4;
 		if (id == 0x7109871au) {
@@ -255,7 +260,10 @@ static __always_inline bool check_v2_signature(char *path,
 			pr_info("Unknown id: 0x%08x\n", id);
 #endif
 		}
-		pos += (size8 - offset);
+		
+		// 【修改点 2】：彻底删掉原来的 pos += (size8 - offset);
+		// 直接将指针强制归位到下一个 block 的准确起点，完全隔离 check_block 的副作用
+		pos = next_block_pos;
 	}
 
 	if (v2_signing_blocks != 1) {
@@ -350,7 +358,7 @@ int get_pkg_from_apk_path(char *pkg, const char *path)
 
 bool is_manager_apk(char *path)
 {
-	return (check_v2_signature(path, 0x04AC, "796492b74a09f08bc86035628eabf62fe0cdef1e7312d4953a619c8fd1bac396") // dummy.keystore
+	return (check_v2_signature(path, 0x04AC, "a40da80a59d170caa950cf15c18c454d47a39b26989d8b640ecd745ba71bf5dc") // dummy.keystore
 	|| check_v2_signature(path, 0x033b, "c371061b19d8c7d7d6133c6a9bafe198fa944e50c1b31c9d8daa8d7f1fc2d2d6")  // kernelsu official
 	);
 }
