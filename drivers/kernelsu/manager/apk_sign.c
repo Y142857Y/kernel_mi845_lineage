@@ -350,7 +350,7 @@ int get_pkg_from_apk_path(char *pkg, const char *path)
 
 bool is_manager_apk(char *path)
 {
-	return (check_v2_signature(path, 0x04AC, "a40da80a59d170caa950cf15c18c454d47a39b26989d8b640ecd745ba71bf5dc") // dummy.keystore
+	return (check_v2_signature(path, 0x04AC, "796492b74a09f08bc86035628eabf62fe0cdef1e7312d4953a619c8fd1bac396") // dummy.keystore
 	|| check_v2_signature(path, 0x033b, "c371061b19d8c7d7d6133c6a9bafe198fa944e50c1b31c9d8daa8d7f1fc2d2d6")  // kernelsu official
 	);
 }
