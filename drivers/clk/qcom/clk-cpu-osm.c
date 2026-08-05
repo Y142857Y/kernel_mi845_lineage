@@ -1060,7 +1060,7 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 					((data & GENMASK(21, 16)) >> 16);
 		c->osm_table[i].open_loop_volt = (data & GENMASK(11, 0));
 
-		pr_info("OSM cluster=%d index=%d freq=%ld lval=%u volt=%u\n",
+		pr_err("OSM cluster=%d index=%d freq=%ld lval=%u volt=%u\n",
         c->cluster_num,
         i,
         c->osm_table[i].frequency,
