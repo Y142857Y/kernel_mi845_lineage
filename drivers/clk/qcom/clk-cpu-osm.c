@@ -1249,7 +1249,8 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 		.get_cpu_cycle_counter = clk_osm_get_cpu_cycle_counter,
 	};
      pr_err("CPU OSM PROBE ENTER\n");
-     * Require the RPM-XO clock to be registered before OSM.
+    /* 
+	 * Require the RPM-XO clock to be registered before OSM.
 	 * The cpuss_gpll0_clk_src is listed to be configured by BL.
 	 */
 	ext_xo_clk = devm_clk_get(dev, "xo_ao");
