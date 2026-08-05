@@ -1238,7 +1238,6 @@ static int clk_cpu_osm_request_mx_supply(struct device *dev)
 
 static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 {
-	pr_err("CPU OSM PROBE ENTER\n");
 	int rc = 0, i, cpu;
 	u32 val;
 	int num_clks = ARRAY_SIZE(osm_qcom_clk_hws);
@@ -1249,9 +1248,8 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 	struct cpu_cycle_counter_cb cb = {
 		.get_cpu_cycle_counter = clk_osm_get_cpu_cycle_counter,
 	};
-
-	/*
-	 * Require the RPM-XO clock to be registered before OSM.
+     pr_err("CPU OSM PROBE ENTER\n");
+     * Require the RPM-XO clock to be registered before OSM.
 	 * The cpuss_gpll0_clk_src is listed to be configured by BL.
 	 */
 	ext_xo_clk = devm_clk_get(dev, "xo_ao");
