@@ -1238,6 +1238,7 @@ static int clk_cpu_osm_request_mx_supply(struct device *dev)
 
 static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 {
+	pr_err("CPU OSM PROBE ENTER\n");
 	int rc = 0, i, cpu;
 	u32 val;
 	int num_clks = ARRAY_SIZE(osm_qcom_clk_hws);
