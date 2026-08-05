@@ -1041,6 +1041,8 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 	u32 data, src, lval, i, j = OSM_TABLE_SIZE;
 	struct clk_vdd_class *vdd = osm_clks_init[c->cluster_num].vdd_class;
 
+	pr_err("OSM LUT TEST cluster=%d\n", c->cluster_num);
+
 	for (i = 0; i < OSM_TABLE_SIZE; i++) {
 		data = clk_osm_read_reg(c, FREQ_REG + i * OSM_REG_SIZE);
 		src = ((data & GENMASK(31, 30)) >> 30);
