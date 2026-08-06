@@ -1124,6 +1124,26 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 			pr_info("clk: OSM_OC: appended idx=%d freq=%lu volt=%u (WARNING: voltage not scaled to match vendor curve)\n",
 				idx, c->osm_table[idx].frequency,
 				oc_steps[k].volt_mv);
+
+			/* Readback verification: confirm the write actually
+			 * landed in hardware and wasn't silently dropped by
+			 * a locked/protected LUT SRAM region.
+			 */
+			{
+				u32 rb_freq = clk_osm_read_reg(c,
+						FREQ_REG + idx * OSM_REG_SIZE);
+				u32 rb_volt = clk_osm_read_reg(c,
+						VOLT_REG + idx * OSM_REG_SIZE);
+				u32 rb_lval = rb_freq & GENMASK(7, 0);
+				u32 rb_mv = rb_volt & GENMASK(11, 0);
+
+				pr_info("clk: OSM_OC_VERIFY: idx=%d wrote_lval=%u readback_lval=%u wrote_mv=%u readback_mv=%u %s\n",
+					idx, oc_steps[k].lval, rb_lval,
+					oc_steps[k].volt_mv, rb_mv,
+					(rb_lval == oc_steps[k].lval &&
+					 rb_mv == oc_steps[k].volt_mv) ?
+					 "MATCH" : "MISMATCH-WRITE-REJECTED");
+			}
 		}
 
 		j += k;
