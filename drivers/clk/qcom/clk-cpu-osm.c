@@ -1041,73 +1041,54 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 			j = i;
 	}
 
-	/* 超频项注入（仅大核） */
-	if (c->cluster_num == 2) {
-		int oc_start;
-		static const struct { u32 lval; u32 volt_mv; } oc_steps[] = {
-			{ 162, 1088 },
-			{ 178, 1088 },
-		};
-		int k, idx;
-		bool write_failed = false;
+	/* 对 perfcl 大核集群进行超频：替换原最高频条目 */
+	if (c->cluster_num == 2 && j > 0) {
+		int top_idx = j - 1;
+		u32 new_lval = 178;   /* 178 * 19.2 MHz ≈ 3417 MHz */
+		u32 new_mv   = 1088;
 
-		if (j < OSM_TABLE_SIZE - 1)
-			oc_start = j;
-		else
-			oc_start = OSM_TABLE_SIZE - 2;
+		if (c->osm_table[top_idx].frequency < XO_RATE * new_lval) {
+			pr_info("OSM_OC: replacing top idx %d (freq=%lu, lval=%u, mv=%u) with lval=%u, mv=%u\n",
+				top_idx,
+				c->osm_table[top_idx].frequency,
+				c->osm_table[top_idx].lval,
+				c->osm_table[top_idx].open_loop_volt,
+				new_lval, new_mv);
 
-		if (oc_start > OSM_TABLE_SIZE - 2)
-			goto skip_oc;
+			/* 更新软件表 */
+			c->osm_table[top_idx].lval          = new_lval;
+			c->osm_table[top_idx].frequency     = XO_RATE * new_lval;
+			c->osm_table[top_idx].open_loop_volt = new_mv;
 
-		for (k = 0; k < ARRAY_SIZE(oc_steps) && (oc_start + k) < OSM_TABLE_SIZE; k++) {
-			idx = oc_start + k;
-			c->osm_table[idx].lval = oc_steps[k].lval;
-			c->osm_table[idx].frequency = XO_RATE * oc_steps[k].lval;
-			c->osm_table[idx].open_loop_volt = oc_steps[k].volt_mv;
-			c->osm_table[idx].ccount = c->max_core_count;
-			if (j > 0) {
-				int ref = j - 1;
-				c->osm_table[idx].virtual_corner = c->osm_table[ref].virtual_corner;
-			} else {
-				c->osm_table[idx].virtual_corner = 0;
-			}
+			/* 修改硬件寄存器 */
+			u32 freq_data = clk_osm_read_reg(c, FREQ_REG + top_idx * OSM_REG_SIZE);
+			freq_data &= ~GENMASK(7, 0);
+			freq_data |= (new_lval & GENMASK(7, 0));
+			clk_osm_write_reg(c, freq_data, FREQ_REG + top_idx * OSM_REG_SIZE);
 
-			u32 freq_data = clk_osm_read_reg(c, FREQ_REG + idx * OSM_REG_SIZE);
-			freq_data = (freq_data & ~(GENMASK(31, 30) | GENMASK(18, 16) | GENMASK(7, 0)))
-				    | (1 << 30)
-				    | ((c->max_core_count << 16) & GENMASK(18, 16))
-				    | (oc_steps[k].lval & GENMASK(7, 0));
-			clk_osm_write_reg(c, freq_data, FREQ_REG + idx * OSM_REG_SIZE);
+			u32 volt_data = clk_osm_read_reg(c, VOLT_REG + top_idx * OSM_REG_SIZE);
+			volt_data &= ~GENMASK(11, 0);
+			volt_data |= (new_mv & GENMASK(11, 0));
+			clk_osm_write_reg(c, volt_data, VOLT_REG + top_idx * OSM_REG_SIZE);
 
-			u32 volt_data = clk_osm_read_reg(c, VOLT_REG + idx * OSM_REG_SIZE);
-			volt_data = (volt_data & ~GENMASK(11, 0)) | (oc_steps[k].volt_mv & GENMASK(11, 0));
-			clk_osm_write_reg(c, volt_data, VOLT_REG + idx * OSM_REG_SIZE);
-
-			u32 rb_freq = clk_osm_read_reg(c, FREQ_REG + idx * OSM_REG_SIZE);
-			u32 rb_volt = clk_osm_read_reg(c, VOLT_REG + idx * OSM_REG_SIZE);
+			/* 回读验证 */
+			u32 rb_freq = clk_osm_read_reg(c, FREQ_REG + top_idx * OSM_REG_SIZE);
+			u32 rb_volt = clk_osm_read_reg(c, VOLT_REG + top_idx * OSM_REG_SIZE);
 			u32 rb_lval = rb_freq & GENMASK(7, 0);
-			u32 rb_mv = rb_volt & GENMASK(11, 0);
-			pr_info("clk: OSM_OC_VERIFY: idx=%d wrote_lval=%u readback_lval=%u wrote_mv=%u readback_mv=%u %s\n",
-				idx, oc_steps[k].lval, rb_lval, oc_steps[k].volt_mv, rb_mv,
-				(rb_lval == oc_steps[k].lval && rb_mv == oc_steps[k].volt_mv) ?
-				"MATCH" : "MISMATCH-WRITE-REJECTED");
+			u32 rb_mv   = rb_volt & GENMASK(11, 0);
 
-			if (rb_lval != oc_steps[k].lval || rb_mv != oc_steps[k].volt_mv) {
-				write_failed = true;
-				break;
+			if (rb_lval != new_lval || rb_mv != new_mv) {
+				pr_err("OSM_OC: register write rejected (wrote lval=%u mv=%u, read lval=%u mv=%u), aborting overclock\n",
+				       new_lval, new_mv, rb_lval, rb_mv);
+				/* 回滚软件表 */
+				c->osm_table[top_idx].lval          = rb_lval;
+				c->osm_table[top_idx].frequency     = XO_RATE * rb_lval;
+				c->osm_table[top_idx].open_loop_volt = rb_mv;
+			} else {
+				pr_info("OSM_OC: overwrite success, new top freq = %lu\n",
+					c->osm_table[top_idx].frequency);
 			}
 		}
-
-		if (write_failed) {
-			/* 不增加任何超频项，保持原有效表结束位置 */
-			pr_err("clk: OSM OC write rejected, skipping overclock entries\n");
-		} else {
-			j = oc_start + k;
-		}
-		if (j > c->num_entries)
-			c->num_entries = j;
-	skip_oc:
-		;
 	}
 
 	osm_clks_init[c->cluster_num].rate_max = devm_kcalloc(&pdev->dev,
