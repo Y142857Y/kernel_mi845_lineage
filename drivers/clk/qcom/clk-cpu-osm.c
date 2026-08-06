@@ -1,3 +1,16 @@
+/*
+ * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #define pr_fmt(fmt) "clk: %s: " fmt, __func__
 
 #include <linux/debugfs.h>
@@ -164,7 +177,7 @@ static unsigned long clk_osm_recalc_rate(struct clk_hw *hw,
 static int clk_osm_determine_rate(struct clk_hw *hw,
 				struct clk_rate_request *req)
 {
-	int i;
+	int i, last_idx = 0;
 	unsigned long rrate = 0;
 	unsigned long rate = req->rate;
 
@@ -176,6 +189,7 @@ static int clk_osm_determine_rate(struct clk_hw *hw,
 	for (i = 0; i < hw->init->num_rate_max; i++) {
 		if (is_better_rate(rate, rrate, hw->init->rate_max[i])) {
 			rrate = hw->init->rate_max[i];
+			last_idx = i;
 			if (rate == rrate)
 				break;
 		}
@@ -184,7 +198,7 @@ static int clk_osm_determine_rate(struct clk_hw *hw,
 	req->rate = rrate;
 
 	pr_debug("clk:%s rate %lu, rrate %lu, Rate max %lu index %u\n",
-			hw->init->name, rate, rrate, hw->init->rate_max[i], i);
+			hw->init->name, rate, rrate, hw->init->rate_max[last_idx], last_idx);
 
 	return 0;
 }
@@ -888,9 +902,11 @@ static int derive_device_list(struct device **device_list,
 		if (!pdev) {
 			pr_err("Unable to find platform_device node for opp-handle (%s)\n",
 						phandle_name);
+			of_node_put(dev_node);
 			return -ENODEV;
 		}
 		device_list[i] = &pdev->dev;
+		of_node_put(dev_node);
 	}
 	return 0;
 }
@@ -912,6 +928,7 @@ static void populate_l3_opp_table(struct device_node *np, char *phandle_name)
 		if (ret < 0) {
 			pr_err("Failed to fill device_list for %s\n",
 							phandle_name);
+			kfree(device_list);
 			return;
 		}
 	} else {
@@ -1012,7 +1029,7 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 			 i, c->osm_table[i].frequency,
 			 c->osm_table[i].virtual_corner,
 			 c->osm_table[i].open_loop_volt);
-		if (c->cluster_num == 2)  
+		if (c->cluster_num == 2)
 			pr_info("OSM_DUMP: idx=%d lval=%u freq=%lu corner=%u ol_volt=%u\n",
 				i, c->osm_table[i].lval, c->osm_table[i].frequency,
 				c->osm_table[i].virtual_corner, c->osm_table[i].open_loop_volt);
@@ -1024,6 +1041,7 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 			j = i;
 	}
 
+	/* 超频项注入（仅大核） */
 	if (c->cluster_num == 2) {
 		int oc_start;
 		static const struct { u32 lval; u32 volt_mv; } oc_steps[] = {
@@ -1031,6 +1049,7 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 			{ 178, 1088 },
 		};
 		int k, idx;
+		bool write_failed = false;
 
 		if (j < OSM_TABLE_SIZE - 1)
 			oc_start = j;
@@ -1045,17 +1064,19 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 			c->osm_table[idx].lval = oc_steps[k].lval;
 			c->osm_table[idx].frequency = XO_RATE * oc_steps[k].lval;
 			c->osm_table[idx].open_loop_volt = oc_steps[k].volt_mv;
+			c->osm_table[idx].ccount = c->max_core_count;
 			if (j > 0) {
 				int ref = j - 1;
-				c->osm_table[idx].ccount = c->osm_table[ref].ccount;
 				c->osm_table[idx].virtual_corner = c->osm_table[ref].virtual_corner;
 			} else {
-				c->osm_table[idx].ccount = c->max_core_count;
 				c->osm_table[idx].virtual_corner = 0;
 			}
 
 			u32 freq_data = clk_osm_read_reg(c, FREQ_REG + idx * OSM_REG_SIZE);
-			freq_data = (freq_data & ~GENMASK(7, 0)) | (oc_steps[k].lval & GENMASK(7, 0));
+			freq_data = (freq_data & ~(GENMASK(31, 30) | GENMASK(18, 16) | GENMASK(7, 0)))
+				    | (1 << 30)
+				    | ((c->max_core_count << 16) & GENMASK(18, 16))
+				    | (oc_steps[k].lval & GENMASK(7, 0));
 			clk_osm_write_reg(c, freq_data, FREQ_REG + idx * OSM_REG_SIZE);
 
 			u32 volt_data = clk_osm_read_reg(c, VOLT_REG + idx * OSM_REG_SIZE);
@@ -1070,9 +1091,19 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 				idx, oc_steps[k].lval, rb_lval, oc_steps[k].volt_mv, rb_mv,
 				(rb_lval == oc_steps[k].lval && rb_mv == oc_steps[k].volt_mv) ?
 				"MATCH" : "MISMATCH-WRITE-REJECTED");
+
+			if (rb_lval != oc_steps[k].lval || rb_mv != oc_steps[k].volt_mv) {
+				write_failed = true;
+				break;
+			}
 		}
 
-		j = oc_start + ARRAY_SIZE(oc_steps);
+		if (write_failed) {
+			/* 不增加任何超频项，保持原有效表结束位置 */
+			pr_err("clk: OSM OC write rejected, skipping overclock entries\n");
+		} else {
+			j = oc_start + k;
+		}
 		if (j > c->num_entries)
 			c->num_entries = j;
 	skip_oc:
@@ -1090,6 +1121,7 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 					sizeof(*vdd->level_votes), GFP_KERNEL);
 		if (!vdd->level_votes)
 			return -ENOMEM;
+		memset(vdd->level_votes, 0, j * sizeof(*vdd->level_votes));
 
 		vdd->vdd_uv = devm_kcalloc(&pdev->dev, j, sizeof(*vdd->vdd_uv),
 								GFP_KERNEL);
