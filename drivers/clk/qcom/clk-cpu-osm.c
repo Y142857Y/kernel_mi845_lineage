@@ -1074,6 +1074,61 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 			j = i;
 	}
 
+	/*
+	 * OSM_OC: Append manual overclock steps past the vendor's last
+	 * valid entry (index j). Vendor table (indices 0..j-1) is left
+	 * completely untouched. Only cluster 2 (perfcl / big cores) is
+	 * touched. Voltage is intentionally NOT raised above the vendor's
+	 * own max (1088 mV) per explicit request - this means these steps
+	 * are very likely to fail to lock or to be unstable under load,
+	 * since the vendor's own curve shows voltage should keep climbing
+	 * well past 1088 mV at these frequencies. Test each step in
+	 * isolation before trusting it.
+	 */
+	if (c->cluster_num == 2 && j > 0 && j < OSM_TABLE_SIZE - 1) {
+		static const struct { u32 lval; u32 volt_mv; } oc_steps[] = {
+			{ 162, 1088 },	/* ~3110.4 MHz */
+			{ 178, 1088 },	/* ~3417.6 MHz */
+		};
+		int k;
+
+		for (k = 0; k < ARRAY_SIZE(oc_steps) && (j + k) < OSM_TABLE_SIZE;
+									k++) {
+			int idx = j + k;
+			u32 freq_data, volt_data;
+
+			c->osm_table[idx].lval = oc_steps[k].lval;
+			c->osm_table[idx].frequency = XO_RATE * oc_steps[k].lval;
+			c->osm_table[idx].open_loop_volt = oc_steps[k].volt_mv;
+			c->osm_table[idx].virtual_corner =
+					c->osm_table[j - 1].virtual_corner;
+			c->osm_table[idx].ccount = c->osm_table[j - 1].ccount;
+
+			freq_data = clk_osm_read_reg(c,
+					FREQ_REG + idx * OSM_REG_SIZE);
+			freq_data = (freq_data & ~GENMASK(7, 0)) |
+					(oc_steps[k].lval & GENMASK(7, 0));
+			clk_osm_write_reg(c, freq_data,
+					FREQ_REG + idx * OSM_REG_SIZE);
+
+			volt_data = clk_osm_read_reg(c,
+					VOLT_REG + idx * OSM_REG_SIZE);
+			volt_data = (volt_data & ~GENMASK(11, 0)) |
+					(oc_steps[k].volt_mv & GENMASK(11, 0));
+			clk_osm_write_reg(c, volt_data,
+					VOLT_REG + idx * OSM_REG_SIZE);
+
+			/* Make sure both writes land before continuing */
+			clk_osm_mb(c);
+
+			pr_info("clk: OSM_OC: appended idx=%d freq=%lu volt=%u (WARNING: voltage not scaled to match vendor curve)\n",
+				idx, c->osm_table[idx].frequency,
+				oc_steps[k].volt_mv);
+		}
+
+		j += k;
+	}
+
 	osm_clks_init[c->cluster_num].rate_max = devm_kcalloc(&pdev->dev,
 						 j, sizeof(unsigned long),
 						       GFP_KERNEL);
