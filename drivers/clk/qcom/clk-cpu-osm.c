@@ -1041,8 +1041,6 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 	u32 data, src, lval, i, j = OSM_TABLE_SIZE;
 	struct clk_vdd_class *vdd = osm_clks_init[c->cluster_num].vdd_class;
 
-	pr_err("OSM LUT TEST cluster=%d\n", c->cluster_num);
-
 	for (i = 0; i < OSM_TABLE_SIZE; i++) {
 		data = clk_osm_read_reg(c, FREQ_REG + i * OSM_REG_SIZE);
 		src = ((data & GENMASK(31, 30)) >> 30);
@@ -1060,12 +1058,14 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 					((data & GENMASK(21, 16)) >> 16);
 		c->osm_table[i].open_loop_volt = (data & GENMASK(11, 0));
 
-		pr_err("OSM cluster=%d index=%d freq=%ld lval=%u volt=%u\n",
-        c->cluster_num,
-        i,
-        c->osm_table[i].frequency,
-        c->osm_table[i].lval,
-        c->osm_table[i].open_loop_volt);
+		pr_debug("index=%d freq=%ld virtual_corner=%d open_loop_voltage=%u\n",
+			 i, c->osm_table[i].frequency,
+			 c->osm_table[i].virtual_corner,
+			 c->osm_table[i].open_loop_volt);
+		if (c->cluster_num == 2)  
+			pr_info("OSM_DUMP: idx=%d lval=%u freq=%lu corner=%u ol_volt=%u\n",
+				i, c->osm_table[i].lval, c->osm_table[i].frequency,
+				c->osm_table[i].virtual_corner, c->osm_table[i].open_loop_volt);
 
 		if (i > 0 && j == OSM_TABLE_SIZE &&
 				c->osm_table[i].frequency ==
@@ -1248,8 +1248,8 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 	struct cpu_cycle_counter_cb cb = {
 		.get_cpu_cycle_counter = clk_osm_get_cpu_cycle_counter,
 	};
-     pr_err("CPU OSM PROBE ENTER\n");
-    /* 
+
+	/*
 	 * Require the RPM-XO clock to be registered before OSM.
 	 * The cpuss_gpll0_clk_src is listed to be configured by BL.
 	 */
