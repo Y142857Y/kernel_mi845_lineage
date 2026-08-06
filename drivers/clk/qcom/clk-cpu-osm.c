@@ -177,10 +177,14 @@ static unsigned long clk_osm_recalc_rate(struct clk_hw *hw,
 static int clk_osm_determine_rate(struct clk_hw *hw,
 				struct clk_rate_request *req)
 {
-	int i, last_idx = 0;
+	int i;
 	unsigned long rrate = 0;
 	unsigned long rate = req->rate;
 
+	/*
+	 * If the rate passed in is 0, return the first frequency in the
+	 * FMAX table.
+	 */
 	if (!rate) {
 		req->rate = hw->init->rate_max[0];
 		return 0;
@@ -189,7 +193,6 @@ static int clk_osm_determine_rate(struct clk_hw *hw,
 	for (i = 0; i < hw->init->num_rate_max; i++) {
 		if (is_better_rate(rate, rrate, hw->init->rate_max[i])) {
 			rrate = hw->init->rate_max[i];
-			last_idx = i;
 			if (rate == rrate)
 				break;
 		}
@@ -198,7 +201,7 @@ static int clk_osm_determine_rate(struct clk_hw *hw,
 	req->rate = rrate;
 
 	pr_debug("clk:%s rate %lu, rrate %lu, Rate max %lu index %u\n",
-			hw->init->name, rate, rrate, hw->init->rate_max[last_idx], last_idx);
+			hw->init->name, rate, rrate, hw->init->rate_max[i], i);
 
 	return 0;
 }
@@ -226,6 +229,7 @@ static int clk_cpu_set_rate(struct clk_hw *hw, unsigned long rate,
 				DCVS_PERF_STATE_DESIRED_REG(core_num,
 							is_sdm845v1));
 
+	/* Make sure the write goes through before proceeding */
 	clk_osm_mb(parent);
 
 	return 0;
@@ -248,6 +252,10 @@ static int clk_pwrcl_set_rate(struct clk_hw *hw, unsigned long rate,
 	if (index < 0)
 		return -EINVAL;
 
+	/*
+	 * Poll the CURRENT_FREQUENCY value of the PSTATE_STATUS register to
+	 * check if the L_VAL has been updated.
+	 */
 	while (count-- > 0) {
 		curr_lval = CURRENT_LVAL(clk_osm_read_reg(parent,
 								PSTATE_STATUS));
@@ -308,6 +316,7 @@ static int l3_clk_set_rate(struct clk_hw *hw, unsigned long rate,
 		return -EINVAL;
 	}
 
+	/* Convert rate to table index */
 	index = clk_osm_search_table(cpuclk->osm_table,
 				     cpuclk->num_entries, req.rate);
 	if (index < 0) {
@@ -319,8 +328,13 @@ static int l3_clk_set_rate(struct clk_hw *hw, unsigned long rate,
 	clk_osm_write_reg(cpuclk, index,
 				DCVS_PERF_STATE_DESIRED_REG(0, is_sdm845v1));
 
+	/* Make sure the write goes through before proceeding */
 	clk_osm_mb(cpuclk);
 
+	/*
+	 * Poll the CURRENT_FREQUENCY value of the PSTATE_STATUS register to
+	 * check if the L_VAL has been updated.
+	 */
 	if (cpuclk->rate >= cpuclk->mx_turbo_freq &&
 					rate < cpuclk->mx_turbo_freq) {
 		while (count-- > 0) {
@@ -354,6 +368,7 @@ static unsigned long l3_clk_recalc_rate(struct clk_hw *hw,
 	pr_debug("%s: Index %d, freq %ld\n", __func__, index,
 				cpuclk->osm_table[index].frequency);
 
+	/* Convert index to frequency */
 	return cpuclk->osm_table[index].frequency;
 }
 
@@ -646,10 +661,15 @@ static struct clk_osm *osm_configure_policy(struct cpufreq_policy *policy)
 	if (!c_parent)
 		return NULL;
 
+	/*
+	 * Don't put any other CPUs into the policy if we're doing
+	 * per_core_dcvs
+	 */
 	if (to_clk_osm(c_parent)->per_core_dcvs)
 		return c;
 
 	first = c;
+	/* Find CPUs that share the same clock domain */
 	for_each_possible_cpu(cpu) {
 		n = logical_cpu_to_clk(cpu);
 		if (!n)
@@ -766,6 +786,10 @@ static int osm_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		if (core_count != parent->max_core_count)
 			table[i].frequency = CPUFREQ_ENTRY_INVALID;
 
+		/*
+		 * Two of the same frequencies with the same core counts means
+		 * end of table.
+		 */
 		if (i > 0 && table[i - 1].driver_data == table[i].driver_data
 					&& prev_cc == core_count) {
 			struct cpufreq_frequency_table *prev = &table[i - 1];
@@ -828,6 +852,7 @@ static u32 find_voltage(struct clk_osm *c, unsigned long rate)
 
 	for (i = 0; i < entries; i++) {
 		if (rate == table[i].frequency) {
+			/* OPP table voltages have units of mV */
 			return table[i].open_loop_volt * 1000;
 		}
 	}
@@ -861,6 +886,12 @@ static int add_opp(struct clk_osm *c, struct device **device_list, int count)
 			}
 		}
 
+		/*
+		 * Print the OPP pair for the lowest and highest frequency for
+		 * each device that we're populating. This is important since
+		 * this information will be used by thermal mitigation and the
+		 * scheduler.
+		 */
 		if (rate == min_rate) {
 			for (i = 0; i < count; i++) {
 				pr_info("Set OPP pair (%lu Hz, %d uv) on %s\n",
@@ -902,11 +933,9 @@ static int derive_device_list(struct device **device_list,
 		if (!pdev) {
 			pr_err("Unable to find platform_device node for opp-handle (%s)\n",
 						phandle_name);
-			of_node_put(dev_node);
 			return -ENODEV;
 		}
 		device_list[i] = &pdev->dev;
-		of_node_put(dev_node);
 	}
 	return 0;
 }
@@ -928,7 +957,6 @@ static void populate_l3_opp_table(struct device_node *np, char *phandle_name)
 		if (ret < 0) {
 			pr_err("Failed to fill device_list for %s\n",
 							phandle_name);
-			kfree(device_list);
 			return;
 		}
 	} else {
@@ -985,11 +1013,16 @@ static u64 clk_osm_get_cpu_cycle_counter(int cpu)
 	parent = to_clk_osm(clk_hw_get_parent(&c->hw));
 
 	spin_lock_irqsave(&parent->lock, flags);
+	/*
+	 * Use core 0's copy as proxy for the whole cluster when per
+	 * core DCVS is disabled.
+	 */
 	core_num = parent->per_core_dcvs ? c->core_num : 0;
 	val = clk_osm_read_reg_no_log(parent,
 			OSM_CYCLE_COUNTER_STATUS_REG(core_num, is_sdm845v1));
 
 	if (val < c->prev_cycle_counter) {
+		/* Handle counter overflow */
 		c->total_cycle_counter += UINT_MAX -
 			c->prev_cycle_counter + val;
 		c->prev_cycle_counter = val;
@@ -1029,66 +1062,12 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 			 i, c->osm_table[i].frequency,
 			 c->osm_table[i].virtual_corner,
 			 c->osm_table[i].open_loop_volt);
-		if (c->cluster_num == 2)
-			pr_info("OSM_DUMP: idx=%d lval=%u freq=%lu corner=%u ol_volt=%u\n",
-				i, c->osm_table[i].lval, c->osm_table[i].frequency,
-				c->osm_table[i].virtual_corner, c->osm_table[i].open_loop_volt);
 
 		if (i > 0 && j == OSM_TABLE_SIZE &&
 				c->osm_table[i].frequency ==
 					c->osm_table[i - 1].frequency &&
 			c->osm_table[i].ccount == c->osm_table[i - 1].ccount)
 			j = i;
-	}
-
-	/* 对 perfcl 大核集群进行超频：替换原最高频条目 */
-	if (c->cluster_num == 2 && j > 0) {
-		int top_idx = j - 1;
-		u32 new_lval = 178;   /* 178 * 19.2 MHz ≈ 3417 MHz */
-		u32 new_mv   = 1088;
-
-		if (c->osm_table[top_idx].frequency < XO_RATE * new_lval) {
-			pr_info("OSM_OC: replacing top idx %d (freq=%lu, lval=%u, mv=%u) with lval=%u, mv=%u\n",
-				top_idx,
-				c->osm_table[top_idx].frequency,
-				c->osm_table[top_idx].lval,
-				c->osm_table[top_idx].open_loop_volt,
-				new_lval, new_mv);
-
-			/* 更新软件表 */
-			c->osm_table[top_idx].lval          = new_lval;
-			c->osm_table[top_idx].frequency     = XO_RATE * new_lval;
-			c->osm_table[top_idx].open_loop_volt = new_mv;
-
-			/* 修改硬件寄存器 */
-			u32 freq_data = clk_osm_read_reg(c, FREQ_REG + top_idx * OSM_REG_SIZE);
-			freq_data &= ~GENMASK(7, 0);
-			freq_data |= (new_lval & GENMASK(7, 0));
-			clk_osm_write_reg(c, freq_data, FREQ_REG + top_idx * OSM_REG_SIZE);
-
-			u32 volt_data = clk_osm_read_reg(c, VOLT_REG + top_idx * OSM_REG_SIZE);
-			volt_data &= ~GENMASK(11, 0);
-			volt_data |= (new_mv & GENMASK(11, 0));
-			clk_osm_write_reg(c, volt_data, VOLT_REG + top_idx * OSM_REG_SIZE);
-
-			/* 回读验证 */
-			u32 rb_freq = clk_osm_read_reg(c, FREQ_REG + top_idx * OSM_REG_SIZE);
-			u32 rb_volt = clk_osm_read_reg(c, VOLT_REG + top_idx * OSM_REG_SIZE);
-			u32 rb_lval = rb_freq & GENMASK(7, 0);
-			u32 rb_mv   = rb_volt & GENMASK(11, 0);
-
-			if (rb_lval != new_lval || rb_mv != new_mv) {
-				pr_err("OSM_OC: register write rejected (wrote lval=%u mv=%u, read lval=%u mv=%u), aborting overclock\n",
-				       new_lval, new_mv, rb_lval, rb_mv);
-				/* 回滚软件表 */
-				c->osm_table[top_idx].lval          = rb_lval;
-				c->osm_table[top_idx].frequency     = XO_RATE * rb_lval;
-				c->osm_table[top_idx].open_loop_volt = rb_mv;
-			} else {
-				pr_info("OSM_OC: overwrite success, new top freq = %lu\n",
-					c->osm_table[top_idx].frequency);
-			}
-		}
 	}
 
 	osm_clks_init[c->cluster_num].rate_max = devm_kcalloc(&pdev->dev,
@@ -1102,7 +1081,6 @@ static int clk_osm_read_lut(struct platform_device *pdev, struct clk_osm *c)
 					sizeof(*vdd->level_votes), GFP_KERNEL);
 		if (!vdd->level_votes)
 			return -ENOMEM;
-		memset(vdd->level_votes, 0, j * sizeof(*vdd->level_votes));
 
 		vdd->vdd_uv = devm_kcalloc(&pdev->dev, j, sizeof(*vdd->vdd_uv),
 								GFP_KERNEL);
@@ -1201,6 +1179,7 @@ static void clk_cpu_osm_driver_sdm670_fixup(void)
 	perfcl_clk.max_core_count = 2;
 }
 
+/* Request MX supply if configured in device tree */
 static int clk_cpu_osm_request_mx_supply(struct device *dev)
 {
 	u32 *array;
@@ -1266,6 +1245,10 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 		.get_cpu_cycle_counter = clk_osm_get_cpu_cycle_counter,
 	};
 
+	/*
+	 * Require the RPM-XO clock to be registered before OSM.
+	 * The cpuss_gpll0_clk_src is listed to be configured by BL.
+	 */
 	ext_xo_clk = devm_clk_get(dev, "xo_ao");
 	if (IS_ERR(ext_xo_clk)) {
 		if (PTR_ERR(ext_xo_clk) != -EPROBE_DEFER)
@@ -1304,6 +1287,7 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 		return rc;
 	}
 
+	/* Check if per-core DCVS is enabled/not */
 	val = clk_osm_read_reg(&pwrcl_clk, CORE_DCVS_CTRL);
 	if (val & BIT(0))
 		pwrcl_clk.per_core_dcvs = true;
@@ -1337,6 +1321,7 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 	spin_lock_init(&pwrcl_clk.lock);
 	spin_lock_init(&perfcl_clk.lock);
 
+	/* Register OSM l3, pwr and perf clocks with Clock Framework */
 	for (i = 0; i < num_clks; i++) {
 		if (!osm_qcom_clk_hws[i])
 			continue;
@@ -1368,6 +1353,10 @@ static int clk_cpu_osm_driver_probe(struct platform_device *pdev)
 	WARN(clk_prepare_enable(l3_gpu_vote_clk.hw.clk),
 			"clk: Failed to enable iocoherent bwmon clock for L3\n");
 
+	/*
+	 * Call clk_prepare_enable for the silver clock explicitly in order to
+	 * place an implicit vote on MX
+	 */
 	for_each_online_cpu(cpu) {
 		osm_clk = logical_cpu_to_clk(cpu);
 		if (!osm_clk)
