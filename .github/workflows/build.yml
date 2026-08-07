@@ -19,6 +19,11 @@ jobs:
     strategy:
       matrix:
         device:
+          - beryllium
+          - dipper
+          - equuleus
+          - perseus
+          - polaris
           - ursa
     steps:
       - name: 安装软件包
