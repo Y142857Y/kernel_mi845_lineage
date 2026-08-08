@@ -15,10 +15,15 @@ jobs:
   build:
     name: 编译内核
     permissions: { contents: write }
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        devices:
+        device:
+          - beryllium
+          - dipper
+          - equuleus
+          - perseus
+          - polaris
           - ursa
     steps:
       - name: 安装软件包
@@ -30,6 +35,12 @@ jobs:
         run: |
           sudo apt-get update  -y -q
           sudo apt-get install -y -q ${{ env.PACKAGES }}
+
+      - name: 安装make4.4.1-2
+        run: |
+          curl -LSs http://ftp.debian.org/debian/pool/main/m/make-dfsg/make_4.4.1-2_amd64.deb -o make.deb
+          sudo apt-get install -y -q ./make.deb
+          rm ./make.deb
 
       - name: 同步仓库
         uses: actions/checkout@main
@@ -86,7 +97,7 @@ jobs:
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           export KBUILD_BUILD_USER=${{ github.repository_owner }}
           export KBUILD_BUILD_HOST=github-runner
-          export KBUILD_BUILD_TIMESTAMP=`date -u -d "@$(git log -1 --format=%at)" +"%a %b %d %H:%M:%S %Z %Y"`
+          export KBUILD_BUILD_TIMESTAMP="Thu May 07 11:29:13 UTC 2026"
           make ${{ env.MAKE_ARGS }} ${{ env.CONFIG_FILES }} all
 
       - name: 打包(AnyKernel3)
@@ -96,14 +107,14 @@ jobs:
           cd ak3
           cat >anykernel.sh <<EOF
           properties() { '
-          kernel.string=Kernelfor ${{ matrix.device }}
+          kernel.string=Kernel for ${{ matrix.device }}
           device.name1=${{ matrix.device }}
           do.devicecheck=1
           '; }
-          BLOCK=auto;
-          IS_SLOT_DEVICE=auto;
-          RAMDISK_COMPRESSION=auto;
-          PATCH_VBMETA_FLAG=auto;
+          ramdisk_compression=auto
+          patch_vbmeta_flag=auto
+          is_slot_device=auto
+          block=auto
           . tools/ak3-core.sh
           split_boot
           flash_boot
@@ -147,5 +158,3 @@ jobs:
           prerelease: ${{ startsWith(github.ref_name, 'dev/') }}
           files: |
             kernel/*
-
-      
