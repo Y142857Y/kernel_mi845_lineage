@@ -15,7 +15,7 @@
 #define KSU_MAX_PACKAGE_NAME 256
 #endif
 
-bool check_v2_signature(const char *path, unsigned int expected_size,
+bool check_v2_signature(char *path, unsigned expected_size,
 			const char *expected_sha256)
 {
 	return true;
@@ -32,14 +32,17 @@ int get_pkg_from_apk_path(char *pkg, const char *path)
 		return -1;
 
 	/*
-	 * Find the final '/' first, then walk backwards to the
-	 * previous '/'. This avoids strlen() + a second full scan.
+	 * Find the last '/' first.
 	 */
 	last_slash = strrchr(path, '/');
 	if (unlikely(!last_slash || last_slash == path))
 		return -1;
 
+	/*
+	 * Find the second-last '/'.
+	 */
 	second_last_slash = last_slash - 1;
+
 	while (second_last_slash > path && *second_last_slash != '/')
 		second_last_slash--;
 
@@ -47,11 +50,9 @@ int get_pkg_from_apk_path(char *pkg, const char *path)
 		return -1;
 
 	/*
-	 * Package name is:
+	 * Expected path format:
 	 *
-	 *   /<package>-<version>/base.apk
-	 *
-	 * Find the first '-' after the second slash.
+	 * /.../<package>-<version>/base.apk
 	 */
 	last_hyphen = strchr(second_last_slash + 1, '-');
 	if (unlikely(!last_hyphen || last_hyphen >= last_slash))
@@ -68,7 +69,7 @@ int get_pkg_from_apk_path(char *pkg, const char *path)
 	return 0;
 }
 
-bool is_manager_apk(const char *path)
+bool is_manager_apk(char *path)
 {
 	if (unlikely(!path))
 		return false;
