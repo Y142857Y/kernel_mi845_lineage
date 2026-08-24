@@ -15,55 +15,66 @@
 #define KSU_MAX_PACKAGE_NAME 256
 #endif
 
-bool check_v2_signature(char *path, unsigned expected_size, const char *expected_sha256)
+bool check_v2_signature(const char *path, unsigned int expected_size,
+			const char *expected_sha256)
 {
 	return true;
 }
 
 int get_pkg_from_apk_path(char *pkg, const char *path)
 {
-	int len = strlen(path);
-	int i;
-	const char *last_slash = NULL;
-	const char *second_last_slash = NULL;
-	const char *last_hyphen = NULL;
-	int pkg_len;
+	const char *last_slash;
+	const char *second_last_slash;
+	const char *last_hyphen;
+	size_t pkg_len;
 
-	if (len >= KSU_MAX_PACKAGE_NAME || len < 1)
+	if (unlikely(!pkg || !path || !*path))
 		return -1;
 
-	for (i = len - 1; i >= 0; i--) {
-		if (path[i] == '/') {
-			if (!last_slash)
-				last_slash = &path[i];
-			else {
-				second_last_slash = &path[i];
-				break;
-			}
-		}
-	}
-	if (!last_slash || !second_last_slash)
+	/*
+	 * Find the final '/' first, then walk backwards to the
+	 * previous '/'. This avoids strlen() + a second full scan.
+	 */
+	last_slash = strrchr(path, '/');
+	if (unlikely(!last_slash || last_slash == path))
 		return -1;
 
-	last_hyphen = strchr(second_last_slash, '-');
-	if (!last_hyphen || last_hyphen > last_slash)
+	second_last_slash = last_slash - 1;
+	while (second_last_slash > path && *second_last_slash != '/')
+		second_last_slash--;
+
+	if (unlikely(*second_last_slash != '/'))
+		return -1;
+
+	/*
+	 * Package name is:
+	 *
+	 *   /<package>-<version>/base.apk
+	 *
+	 * Find the first '-' after the second slash.
+	 */
+	last_hyphen = strchr(second_last_slash + 1, '-');
+	if (unlikely(!last_hyphen || last_hyphen >= last_slash))
 		return -1;
 
 	pkg_len = last_hyphen - second_last_slash - 1;
-	if (pkg_len >= KSU_MAX_PACKAGE_NAME || pkg_len <= 0)
+
+	if (unlikely(!pkg_len || pkg_len >= KSU_MAX_PACKAGE_NAME))
 		return -1;
 
 	memcpy(pkg, second_last_slash + 1, pkg_len);
 	pkg[pkg_len] = '\0';
+
 	return 0;
 }
 
-bool is_manager_apk(char *path)
+bool is_manager_apk(const char *path)
 {
-	if (!path)
+	if (unlikely(!path))
 		return false;
-	return strstr(path, "me.weishu.kernelsu") ||
-	       strstr(path, "com.ripes.kernelsu");
+
+	return !!(strstr(path, "me.weishu.kernelsu") ||
+		  strstr(path, "com.ripes.kernelsu"));
 }
 
 #ifdef CONFIG_KSU_DEBUG
@@ -74,7 +85,7 @@ static int set_dummy(const char *val, const struct kernel_param *kp)
 	return param_set_int(val, kp);
 }
 
-static struct kernel_param_ops dummy_ops = {
+static const struct kernel_param_ops dummy_ops = {
 	.set = set_dummy,
 	.get = param_get_int,
 };
