@@ -115,8 +115,7 @@ jobs:
           flash_boot
           EOF
           zip -qr9 Anykernel3-${{ matrix.device }}.zip * -x .git .github README.md *placeholder
-          cp "$GITHUB_WORKSPACE/kernel/ak3-core.sh" tools/ak3-core.sh
-          zip -9 Anykernel3-${{ matrix.device }}.zip tools/ak3-core.sh    
+      
       - name: 上传文件
         uses: actions/upload-artifact@main
         with:
