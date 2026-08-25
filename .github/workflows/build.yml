@@ -19,11 +19,6 @@ jobs:
     strategy:
       matrix:
         device:
-          - beryllium
-          - dipper
-          - equuleus
-          - perseus
-          - polaris
           - ursa
     steps:
       - name: 安装软件包
@@ -120,14 +115,16 @@ jobs:
           flash_boot
           EOF
           zip -qr9 Anykernel3-${{ matrix.device }}.zip * -x .git .github README.md *placeholder
-      - name: 替换ak3-core.sh
-        run: |
-          mkdir -p ak3/tools
-          cp kernel_mi845_lineage/kernel/ak3-core.sh ak3/tools/ak3-core.sh
+          echo "=== 当前目录 ==="
+          pwd
+          echo  "=== kernel 目录 ==="
+          ls -lah "$GITHUB_WORKSPACE/kernel"
+          echo "=== 查找 ak3-core.sh ==="
+          find "$GITHUB_WORKSPACE" -name "ak3-core.sh" -type f
 
-          cd ak3
+          cp "$GITHUB_WORKSPACE/kernel/ak3-core.sh" tools/ak3-core.sh
           zip -9 Anykernel3-${{ matrix.device }}.zip tools/ak3-core.sh
-      - name: 上传文件
+        name: 上传文件
         uses: actions/upload-artifact@main
         with:
           name: kernel-${{ matrix.device }}-ak3
@@ -149,7 +146,7 @@ jobs:
 
       - name: 获取当前时间
         id: time
-        run: |
+      |
           NOW=$(date +%s)
           TIME_STR=$(TZ='Asia/Shanghai' date -d "@$NOW" +'%Y%m%d%H%M')
           echo "timestamp=$NOW" >> $GITHUB_OUTPUT
