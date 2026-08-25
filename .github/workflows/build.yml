@@ -118,7 +118,7 @@ jobs:
       - name: 替换ak3-core.sh
         run: |
           mkdir -p ak3/tools
-          cp kernel/ak3-core.sh ak3/tools/ak3-core.sh
+          cp ../kernel/ak3-core.sh ak3/tools/ak3-core.sh
 
           cd ak3
           zip -9 Anykernel3-${{ matrix.device }}.zip tools/ak3-core.sh
