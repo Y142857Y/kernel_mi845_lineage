@@ -15,11 +15,11 @@ jobs:
   build:
     name: 编译内核
     permissions: { contents: write }
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       matrix:
         device:
-          - ursa
+            - ursa
     steps:
       - name: 安装软件包
         if: env.PACKAGES != ''
@@ -30,12 +30,6 @@ jobs:
         run: |
           sudo apt-get update  -y -q
           sudo apt-get install -y -q ${{ env.PACKAGES }}
-
-      - name: 安装make4.4.1-2
-        run: |
-          curl -LSs http://ftp.debian.org/debian/pool/main/m/make-dfsg/make_4.4.1-2_amd64.deb -o make.deb
-          sudo apt-get install -y -q ./make.deb
-          rm ./make.deb
 
       - name: 同步仓库
         uses: actions/checkout@main
@@ -92,7 +86,7 @@ jobs:
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           export KBUILD_BUILD_USER=${{ github.repository_owner }}
           export KBUILD_BUILD_HOST=github-runner
-          export KBUILD_BUILD_TIMESTAMP="Sat Aug 01 00:00:00 UTC 2026"
+          export KBUILD_BUILD_TIMESTAMP=`date -u -d "@$(git log -1 --format=%at)" +"%a %b %d %H:%M:%S %Z %Y"`
           make ${{ env.MAKE_ARGS }} ${{ env.CONFIG_FILES }} all
 
       - name: 打包(AnyKernel3)
@@ -106,10 +100,10 @@ jobs:
           device.name1=${{ matrix.device }}
           do.devicecheck=1
           '; }
-          ramdisk_compression=auto
-          patch_vbmeta_flag=auto
-          is_slot_device=auto
-          block=auto
+          BLOCK=auto;
+          IS_SLOT_DEVICE=auto;
+          RAMDISK_COMPRESSION=auto;
+          PATCH_VBMETA_FLAG=auto;
           . tools/ak3-core.sh
           split_boot
           flash_boot
@@ -117,14 +111,14 @@ jobs:
           zip -qr9 Anykernel3-${{ matrix.device }}.zip * -x .git .github README.md *placeholder
           echo "=== 当前目录 ==="
           pwd
-          echo  "=== kernel 目录 ==="
+          echo "=== kernel 目录 ==="
           ls -lah "$GITHUB_WORKSPACE/kernel"
           echo "=== 查找 ak3-core.sh ==="
           find "$GITHUB_WORKSPACE" -name "ak3-core.sh" -type f
-
           cp "$GITHUB_WORKSPACE/kernel/ak3-core.sh" tools/ak3-core.sh
           zip -9 Anykernel3-${{ matrix.device }}.zip tools/ak3-core.sh
-        name: 上传文件
+
+      - name: 上传文件
         uses: actions/upload-artifact@main
         with:
           name: kernel-${{ matrix.device }}-ak3
@@ -146,7 +140,7 @@ jobs:
 
       - name: 获取当前时间
         id: time
-      |
+        run: |
           NOW=$(date +%s)
           TIME_STR=$(TZ='Asia/Shanghai' date -d "@$NOW" +'%Y%m%d%H%M')
           echo "timestamp=$NOW" >> $GITHUB_OUTPUT
