@@ -15,11 +15,11 @@ jobs:
   build:
     name: 编译内核
     permissions: { contents: write }
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         device:
-            - ursa
+          - ursa
     steps:
       - name: 安装软件包
         if: env.PACKAGES != ''
@@ -30,6 +30,12 @@ jobs:
         run: |
           sudo apt-get update  -y -q
           sudo apt-get install -y -q ${{ env.PACKAGES }}
+
+      - name: 安装make4.4.1-2
+        run: |
+          curl -LSs http://ftp.debian.org/debian/pool/main/m/make-dfsg/make_4.4.1-2_amd64.deb -o make.deb
+          sudo apt-get install -y -q ./make.deb
+          rm ./make.deb
 
       - name: 同步仓库
         uses: actions/checkout@main
@@ -86,7 +92,7 @@ jobs:
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           export KBUILD_BUILD_USER=${{ github.repository_owner }}
           export KBUILD_BUILD_HOST=github-runner
-          export KBUILD_BUILD_TIMESTAMP=`date -u -d "@$(git log -1 --format=%at)" +"%a %b %d %H:%M:%S %Z %Y"`
+          export KBUILD_BUILD_TIMESTAMP="Sat Aug 01 00:00:00 UTC 2026"
           make ${{ env.MAKE_ARGS }} ${{ env.CONFIG_FILES }} all
 
       - name: 打包(AnyKernel3)
@@ -100,20 +106,20 @@ jobs:
           device.name1=${{ matrix.device }}
           do.devicecheck=1
           '; }
-          BLOCK=auto;
-          IS_SLOT_DEVICE=auto;
-          RAMDISK_COMPRESSION=auto;
-          PATCH_VBMETA_FLAG=auto;
+          ramdisk_compression=auto
+          patch_vbmeta_flag=auto
+          is_slot_device=auto
+          block=auto
           . tools/ak3-core.sh
           split_boot
           flash_boot
           EOF
           zip -qr9 Anykernel3-${{ matrix.device }}.zip * -x .git .github README.md *placeholder
           cp "$GITHUB_WORKSPACE/kernel/kernel/ak3-core.sh" tools/ak3-core.sh
-          zip -9 Anykernel3-${{ matrix.device }}.zip tools/ak3-core.sh   
+          zip -9 Anykernel3-${{ matrix.device }}.zip tools/ak3-core.sh
 
       - name: 上传文件
-        uses: actions/upload-artifact@mai
+        uses: actions/upload-artifact@main
         with:
           name: kernel-${{ matrix.device }}-ak3
           path: ak3/Anykernel3-${{ matrix.device }}.zip
