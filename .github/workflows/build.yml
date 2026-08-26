@@ -109,17 +109,11 @@ jobs:
           flash_boot
           EOF
           zip -qr9 Anykernel3-${{ matrix.device }}.zip * -x .git .github README.md *placeholder
-          echo "=== 当前目录 ==="
-          pwd
-          echo "=== kernel 目录 ==="
-          ls -lah "$GITHUB_WORKSPACE/kernel"
-          echo "=== 查找 ak3-core.sh ==="
-          find "$GITHUB_WORKSPACE" -name "ak3-core.sh" -type f
-          cp "$GITHUB_WORKSPACE/kernel/ak3-core.sh" tools/ak3-core.sh
-          zip -9 Anykernel3-${{ matrix.device }}.zip tools/ak3-core.sh
+          cp "$GITHUB_WORKSPACE/kernel/kernel/ak3-core.sh" tools/ak3-core.sh
+          zip -9 Anykernel3-${{ matrix.device }}.zip tools/ak3-core.sh   
 
       - name: 上传文件
-        uses: actions/upload-artifact@main
+        uses: actions/upload-artifact@mai
         with:
           name: kernel-${{ matrix.device }}-ak3
           path: ak3/Anykernel3-${{ matrix.device }}.zip
