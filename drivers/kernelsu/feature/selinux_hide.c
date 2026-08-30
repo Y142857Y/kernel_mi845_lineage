@@ -47,28 +47,27 @@ static __always_inline int ksu_hide_setprocattr_inline(const char *name, void *v
 	if (current_uid().val < 10000)
 		return 0;
 
-	if (!size)
-		return 0;
+	if (size < 2)
+    return 0;
 
 	if (!name)
 		return 0;
 
-	if (!!strcmp(name, "current"))
+	if (strcmp(name, "current"))
 		return 0;
 
-	char *str = (char *)value;
+	if (!value)
+    return 0;
 
-	if (!str)
-		return 0;
+    char *str = value;
 
-	// two cachelines
-	char buf[128] = { 0 };
-	size_t len = (size < 127) ? size : 127;
-
-	memcpy(buf, str, len);
-
-	if (!ksu_should_destroy_context(buf))
-		return 0;
+    char buf[128] = { 0 };
+    size_t len = min_t(size_t, size, 
+    sizeof(buf) - 1);
+ 
+    memcpy(buf, str, len);
+    if (!ksu_should_destroy_context(buf))
+    return 0;
 	
 	pr_info("selinux_hide: setprocattr: destroy: %s\n", buf);
 	str[1] = '1';
@@ -89,9 +88,8 @@ static __nocfi ssize_t ksu_selinux_transaction_write(struct file *file, const ch
 	if (current_uid().val < 10000)
 		goto skip_destroy;
 
-	// two cachelines
-	char kbuf[128] = { 0 };
-	size_t len = (size < 127) ? size : 127;
+    char kbuf[128] = { 0 };
+    size_t len = min_t(size_t, size, sizeof(kbuf) - 1);
 
 	if (ksu_copy_from_user_retry(kbuf, buf, len))
 		goto skip_destroy;
@@ -105,6 +103,9 @@ static __nocfi ssize_t ksu_selinux_transaction_write(struct file *file, const ch
 	return -EINVAL;
 
 skip_destroy:
+	if (unlikely(!selinux_transaction_write_fn))
+		return -ENODEV;
+
 	return selinux_transaction_write_fn(file, buf, size, pos);
 }
 
@@ -396,4 +397,3 @@ void __exit ksu_selinux_hide_exit()
 {
 	ksu_unregister_feature_handler(KSU_FEATURE_SELINUX_HIDE);
 }
-
