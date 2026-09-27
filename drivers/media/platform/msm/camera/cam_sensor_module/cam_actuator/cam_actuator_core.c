@@ -575,7 +575,8 @@ static int32_t cam_actuator_power_down(struct cam_actuator_ctrl_t *a_ctrl)
 	}
 
 #ifdef CONFIG_USE_ROHM_BU64753
-	if (a_ctrl->io_master_info.cci_client->sid == ROHM_ACTUATOR_II2_ADDR)
+	if (a_ctrl->actuator_vendor == CAM_ACTUATOR_VENDOR_ROHM &&
+	    a_ctrl->io_master_info.cci_client->sid == ROHM_ACTUATOR_II2_ADDR)
 		rc = cam_actuator_write_power_off_cmd(a_ctrl);
 	if (rc) {
 		CAM_ERR(CAM_ACTUATOR, "eeprom driver write failed:%d", rc);
@@ -681,10 +682,10 @@ int32_t cam_actuator_slaveInfo_pkt_parser(struct cam_actuator_ctrl_t *a_ctrl,
 			i2c_info->i2c_freq_mode;
 		a_ctrl->io_master_info.cci_client->sid =
 			i2c_info->slave_addr >> 1;
-#ifdef CONFIG_USE_BU64748
-		a_ctrl->io_master_info.cci_client->retries = 3;
-		a_ctrl->io_master_info.cci_client->id_map = 0;
-#endif
+		if (a_ctrl->actuator_vendor == CAM_ACTUATOR_VENDOR_BU64748) {
+			a_ctrl->io_master_info.cci_client->retries = 3;
+			a_ctrl->io_master_info.cci_client->id_map = 0;
+		}
 		CAM_DBG(CAM_ACTUATOR, "Slave addr: 0x%x Freq Mode: %d",
 			i2c_info->slave_addr, i2c_info->i2c_freq_mode);
 	} else if (a_ctrl->io_master_info.master_type == I2C_MASTER) {
@@ -1000,7 +1001,9 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 		io_master_info = &(a_ctrl->io_master_info);
 		cci_client = io_master_info->cci_client;
 
-		if ((cci_client != NULL) && ((cci_client->sid) == ROHM_ACTUATOR_II2_ADDR)) {
+		if ((a_ctrl->actuator_vendor == CAM_ACTUATOR_VENDOR_ROHM) &&
+			(cci_client != NULL) &&
+			((cci_client->sid) == ROHM_ACTUATOR_II2_ADDR)) {
 			rc = cam_actuator_eeprom_data_write(g_eeprom_mapdata, a_ctrl);
 			if (rc < 0) {
 				CAM_ERR(CAM_ACTUATOR, "Write Init Driver Data To Actuator failed");
@@ -1009,7 +1012,7 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 #endif
 
 #ifdef CONFIG_USE_BU64748
-
+		if (a_ctrl->actuator_vendor == CAM_ACTUATOR_VENDOR_BU64748) {
 			if (a_ctrl->io_master_info.cci_client->sid == 0xEC/2)
 			{
 				rc = cam_actuator_fw_download(a_ctrl);
@@ -1019,13 +1022,15 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 					return rc;
 				}
 			}
+		}
 #endif
 		}
 
 #ifdef CONFIG_USE_BU64748
 
 		CAM_ERR(CAM_ACTUATOR, "before init setting dac sid num %x ", a_ctrl->io_master_info.cci_client->sid);
-		if (a_ctrl->io_master_info.cci_client->sid == 0x18/2)
+		if ((a_ctrl->actuator_vendor == CAM_ACTUATOR_VENDOR_BU64748) &&
+			(a_ctrl->io_master_info.cci_client->sid == 0x18/2))
 		{
 			rc = cam_actuator_apply_settings(a_ctrl,
 					&a_ctrl->i2c_data.init_settings);
@@ -1037,13 +1042,15 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 		}
 #endif
 
-#ifndef CONFIG_USE_BU64748
-		rc = cam_actuator_apply_settings(a_ctrl,
-			&a_ctrl->i2c_data.init_settings);
-		CAM_ERR(CAM_ACTUATOR, "init setting dac");
-		if (rc < 0) {
-			CAM_ERR(CAM_ACTUATOR, "Cannot apply Init settings");
-			return rc;
+#if !defined(CONFIG_USE_BU64748) || defined(CONFIG_USE_ROHM_BU64753)
+		if (a_ctrl->actuator_vendor != CAM_ACTUATOR_VENDOR_BU64748) {
+			rc = cam_actuator_apply_settings(a_ctrl,
+				&a_ctrl->i2c_data.init_settings);
+			CAM_ERR(CAM_ACTUATOR, "init setting dac");
+			if (rc < 0) {
+				CAM_ERR(CAM_ACTUATOR, "Cannot apply Init settings");
+				return rc;
+			}
 		}
 #endif
 

@@ -180,9 +180,11 @@ endif
 
 KBUILD_DTBS	:= dtbs
 
-ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+# Always emit __symbols__ (-@). Mi MIX 3 is an "include-dtbo" device: it takes
+# the plain SoC dtb appended to the kernel image and applies a board overlay
+# from the dtbo partition, so both the base dtbs and the overlays need symbols
+# for the overlay labels to resolve.
 export DTC_FLAGS := -@
-endif
 
 all:	$(KBUILD_IMAGE) $(KBUILD_DTBS)
 

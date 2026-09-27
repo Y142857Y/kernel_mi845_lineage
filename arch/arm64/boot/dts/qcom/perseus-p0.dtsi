@@ -501,6 +501,7 @@
 		focaltech,project-name = "e5";
 		focaltech,lockdown-info-addr = <0x1FFD0>;
 		focaltech,reset-when-resume;
+		focaltech,use-power-supply;
 		focaltech,open-min = <3000>;
 		focaltech,timeout-read-reg = <2000>;
 		focaltech,check-display-name;
@@ -976,5 +977,14 @@
 		compatible = "qcom,msm-ssc-sensors";
 		status = "ok";
 		qcom,firmware-name = "slpi_ps";
+	};
+};
+
+&soc {
+	halls {
+		compatible = "qcom,halls";
+		status = "ok";
+		qcom,hall-gpios = <&tlmm 49 GPIO_ACTIVE_HIGH>,
+				  <&tlmm 113 GPIO_ACTIVE_HIGH>;
 	};
 };

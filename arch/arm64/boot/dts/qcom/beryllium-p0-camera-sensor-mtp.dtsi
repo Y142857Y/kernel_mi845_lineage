@@ -251,6 +251,7 @@
 		cell-index = <0>;
 		reg = <0x0>;
 		compatible = "qcom,actuator";
+		qcom,actuator-vendor = "bu64748";
 		cci-master = <0>;
 		cam_vaf-supply = <&actuator_rear_regulator>;
 		regulator-names = "cam_vaf";

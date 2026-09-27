@@ -1349,6 +1349,8 @@ static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
 	pdata->reset_when_resume = of_property_read_bool(np, "focaltech,reset-when-resume");
 	pdata->check_display_name = of_property_read_bool(np, "focaltech,check-display-name");
 	pdata->cutoff_power = of_property_read_bool(np, "focaltech,cutoff-power");
+	pdata->use_power_supply =
+		of_property_read_bool(np, "focaltech,use-power-supply");
 
 
 	FTS_FUNC_EXIT();
@@ -1868,8 +1870,10 @@ static int fts_ts_probe(struct i2c_client *client, const struct i2c_device_id *i
 	INIT_WORK(&ts_data->resume_work, fts_resume_work);
 	INIT_WORK(&ts_data->suspend_work, fts_suspend_work);
 #ifdef CONFIG_TOUCHSCREEN_FTS_POWER_SUPPLY
-	INIT_WORK(&ts_data->power_supply_work, fts_power_supply_work);
-	ts_data->is_usb_exist = -1;
+	if (ts_data->pdata->use_power_supply) {
+		INIT_WORK(&ts_data->power_supply_work, fts_power_supply_work);
+		ts_data->is_usb_exist = -1;
+	}
 #endif
 
 	ret = fts_irq_registration(ts_data);
@@ -1889,8 +1893,10 @@ static int fts_ts_probe(struct i2c_client *client, const struct i2c_device_id *i
 	init_completion(&ts_data->dev_pm_suspend_completion);
 
 #ifdef CONFIG_TOUCHSCREEN_FTS_POWER_SUPPLY
-	ts_data->power_supply_notifier.notifier_call = fts_power_supply_event;
-	power_supply_reg_notifier(&ts_data->power_supply_notifier);
+	if (ts_data->pdata->use_power_supply) {
+		ts_data->power_supply_notifier.notifier_call = fts_power_supply_event;
+		power_supply_reg_notifier(&ts_data->power_supply_notifier);
+	}
 #endif
 
 #ifdef CONFIG_DRM

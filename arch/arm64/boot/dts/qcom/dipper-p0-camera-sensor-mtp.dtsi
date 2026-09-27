@@ -114,6 +114,7 @@
 		cell-index = <0>;
 		reg = <0x0>;
 		compatible = "qcom,actuator";
+		qcom,actuator-vendor = "rohm";
 		cci-master = <0>;
 		cam_vaf-supply = <&actuator_rear_regulator>;
 		regulator-names = "cam_vaf";
@@ -127,6 +128,7 @@
 		cell-index = <1>;
 		reg = <0x1>;
 		compatible = "qcom,actuator";
+		qcom,actuator-vendor = "rohm";
 		cci-master = <1>;
 		cam_vaf-supply = <&actuator_rear_aux_regulator>;
 		regulator-names = "cam_vaf";

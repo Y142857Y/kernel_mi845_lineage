@@ -16,15 +16,6 @@ jobs:
     name: 编译内核
     permissions: { contents: write }
     runs-on: ubuntu-26.04
-    strategy:
-      matrix:
-        device:
-          - beryllium
-          - dipper
-          - equuleus
-          - perseus
-          - polaris
-          - ursa
     steps:
       - name: 安装软件包
         if: env.PACKAGES != ''
@@ -32,6 +23,7 @@ jobs:
           PACKAGES:
             binutils-aarch64-linux-gnu
             binutils-arm-linux-gnueabi
+            device-tree-compiler
         run: |
           sudo apt-get update  -y -q
           sudo apt-get install -y -q ${{ env.PACKAGES }}
@@ -66,8 +58,8 @@ jobs:
       - name: 缓存ccache
         uses: hendrikmuhs/ccache-action@main
         with:
-          key: kernel-${{ matrix.device }}
-          restore-keys: kernel-${{ matrix.device }}
+          key: kernel-universal
+          restore-keys: kernel-universal
           max-size: 5G
 
       - name: 编译
@@ -85,7 +77,7 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi-
           CONFIG_FILES:
             vendor/xiaomi/mi845_defconfig
-            vendor/xiaomi/${{ matrix.device }}.config
+            vendor/xiaomi/mi845_universal.config
             lxc.config
         run: |
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
@@ -94,15 +86,25 @@ jobs:
           export KBUILD_BUILD_TIMESTAMP=`date -u -d "@$(git log -1 --format=%at)" +"%a %b %d %H:%M:%S %Z %Y"`
           make ${{ env.MAKE_ARGS }} ${{ env.CONFIG_FILES }} all
 
+          mkdir -p dist
+          find out/arch/arm64/boot/dts -name "*.dtbo" | \
+          xargs python3 scripts/mkdtboimg.py create dist/dtbo.img --page_size=4096
+
       - name: 打包(AnyKernel3)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3 --depth=1 ak3
           cp kernel/out/arch/arm64/boot/Image.gz-dtb ak3/
+          cp kernel/dist/dtbo.img ak3/
           cd ak3
-          cat >anykernel.sh <<EOF
+          cat >anykernel.sh <<'EOF'
           properties() { '
-          kernel.string=Kernel for ${{ matrix.device }}
-          device.name1=${{ matrix.device }}
+          kernel.string=Kernel for Mi845 (dipper/ursa/equuleus/beryllium/polaris/perseus)
+          device.name1=dipper
+          device.name2=ursa
+          device.name3=equuleus
+          device.name4=beryllium
+          device.name5=polaris
+          device.name6=perseus
           do.devicecheck=1
           '; }
           BLOCK=auto;
@@ -112,14 +114,17 @@ jobs:
           . tools/ak3-core.sh
           split_boot
           flash_boot
+          if [ "$(getprop ro.product.device)" = "perseus" ]; then
+          flash_generic dtbo
+          fi
           EOF
-          zip -qr9 Anykernel3-${{ matrix.device }}.zip * -x .git .github README.md *placeholder
+          zip -qr9 Anykernel3-universal.zip * -x .git .github README.md *placeholder
 
       - name: 上传文件
         uses: actions/upload-artifact@main
         with:
-          name: kernel-${{ matrix.device }}-ak3
-          path: ak3/Anykernel3-${{ matrix.device }}.zip
+          name: kernel-universal-ak3
+          path: ak3/Anykernel3-universal.zip
 
   release:
     name: 发布

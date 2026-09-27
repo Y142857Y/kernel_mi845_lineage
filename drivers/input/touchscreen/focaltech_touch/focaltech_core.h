@@ -127,6 +127,7 @@ struct fts_ts_platform_data {
 	u32 lockdown_info_addr;
 	bool check_display_name;
 	bool cutoff_power;
+	bool use_power_supply;
 };
 
 struct ts_event {

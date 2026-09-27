@@ -67,19 +67,16 @@ perseus-p2-v2.1-overlay.dtbo-base := sdm845-v2.1.dtb
 perseus-p3-v2.1-overlay.dtbo-base := sdm845-v2.1.dtb
 perseus-mp-v2.1-overlay.dtbo-base := sdm845-v2.1.dtb
 else
-dtb-y += \
-	sdm845-sim.dtb \
-	sdm845-rumi.dtb \
-	sdm845-mtp.dtb \
-	sdm845-cdp.dtb \
-	sdm845-v2-rumi.dtb \
-	sdm845-v2-mtp.dtb \
-	sdm845-v2-cdp.dtb \
-	sdm845-qrd.dtb \
-	sdm845-v2-qrd.dtb \
-	sdm845-4k-panel-mtp.dtb \
-	sdm845-4k-panel-cdp.dtb \
-	sdm845-4k-panel-qrd.dtb
+	# Universal Mi845 build: all enabled MACH_XIAOMI_* boards append their own
+	# dtbs below, so the appended blob carries one dtb per board variant.
+	#
+	# sdm845-v2.1.dtb is the plain SoC base for the Mi MIX 3 dtbo flow (see the
+	# dtbo-y block at the end of this section). The other generic sdm845-*.dtb
+	# are Qualcomm reference platforms, they carry no Mi845 qcom,board-id and
+	# the bootloader can never select them, so they are left out to keep the
+	# appended blob small.
+	dtb-y += \
+	sdm845-v2.1.dtb
 
 dtb-$(CONFIG_MACH_XIAOMI_D5X) += \
 	polaris-p0.dtb \
@@ -144,6 +141,27 @@ dtb-$(CONFIG_MACH_XIAOMI_E5) += \
 	perseus-p2-v2.1.dtb \
 	perseus-p3-v2.1.dtb \
 	perseus-mp-v2.1.dtb
+
+	# Mi MIX 3 is an "include-dtbo" device: its bootloader takes the plain
+	# SoC dtb appended to the kernel image and applies the matching board
+	# overlay from the dtbo partition. Build the perseus overlays as well so
+	# they can be packed into a dtbo.img (see scripts/mkdtboimg.py) and
+	# flashed to the dtbo partition. The base dtbs above are built with -@
+	# (DTC_FLAGS in arch/arm64/Makefile) so the overlay labels resolve.
+	dtbo-$(CONFIG_MACH_XIAOMI_E5) += \
+		perseus-p0-v2.1-overlay.dtbo \
+		perseus-p1-v2.1-overlay.dtbo \
+		perseus-p1_2-v2.1-overlay.dtbo \
+		perseus-p2-v2.1-overlay.dtbo \
+		perseus-p3-v2.1-overlay.dtbo \
+		perseus-mp-v2.1-overlay.dtbo
+
+perseus-p0-v2.1-overlay.dtbo-base := sdm845-v2.1.dtb
+perseus-p1-v2.1-overlay.dtbo-base := sdm845-v2.1.dtb
+perseus-p1_2-v2.1-overlay.dtbo-base := sdm845-v2.1.dtb
+perseus-p2-v2.1-overlay.dtbo-base := sdm845-v2.1.dtb
+perseus-p3-v2.1-overlay.dtbo-base := sdm845-v2.1.dtb
+perseus-mp-v2.1-overlay.dtbo-base := sdm845-v2.1.dtb
 endif
 else
 dtb-$(CONFIG_ARCH_QCOM)	+= apq8016-sbc.dtb msm8916-mtp.dtb

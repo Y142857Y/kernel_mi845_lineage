@@ -388,10 +388,14 @@ static int32_t cam_actuator_driver_platform_probe(
 		goto free_mem;
 
 #ifdef CONFIG_USE_BU64748
-	rc = cam_actuator_update_i2c_info(a_ctrl, &soc_private->i2c_info);
-	if (rc) {
-		CAM_ERR(CAM_ACTUATOR, "failed: to update i2c info rc %d", rc);
-		goto unreg_subdev;
+	if (a_ctrl->actuator_vendor == CAM_ACTUATOR_VENDOR_BU64748) {
+		rc = cam_actuator_update_i2c_info(a_ctrl,
+			&soc_private->i2c_info);
+		if (rc) {
+			CAM_ERR(CAM_ACTUATOR, "failed: to update i2c info rc %d",
+				rc);
+			goto unreg_subdev;
+		}
 	}
 #endif
 

@@ -5468,12 +5468,12 @@ ProbeErrorExit_7:
 		fts_secure_remove(info);
 #endif
 #ifdef CONFIG_I2C_BY_DMA
-	if (info->dma_buf)
-		kfree(info->dma_buf);
-	if (info->dma_buf->rdBuf)
+	if (info->dma_buf) {
 		kfree(info->dma_buf->rdBuf);
-	if (info->dma_buf->wrBuf)
 		kfree(info->dma_buf->wrBuf);
+		kfree(info->dma_buf);
+		info->dma_buf = NULL;
+	}
 #endif
 #ifdef CONFIG_DRM
 	drm_unregister_client(&info->notifier);

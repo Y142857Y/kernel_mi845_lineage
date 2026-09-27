@@ -20,10 +20,10 @@ OBJCOPYFLAGS_Image :=-O binary -R .note -R .note.gnu.build-id -R .comment -S
 
 targets := Image Image.bz2 Image.gz Image.lz4 Image.lzma Image.lzo
 
-DTB_NAMES := $(subst $\",,$(CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES))
+DTB_NAMES := $(subst $",,$(CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES))
 ifneq ($(DTB_NAMES),)
 DTB_LIST := $(addsuffix .dtb,$(DTB_NAMES))
-DTB_OBJS := $(addprefix $(obj)/dts/,$(DTB_LIST))
+DTB_OBJS := $(addprefix $(obj)/dts/qcom/,$(DTB_LIST))
 else
 DTB_OBJS := $(shell find $(obj)/dts/ -name \*.dtb)
 endif

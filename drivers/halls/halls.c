@@ -6,10 +6,11 @@
 #include <linux/workqueue.h>
 #include <linux/pm.h>
 #include <linux/input.h>
+#include <linux/of.h>
+#include <linux/of_gpio.h>
+#include <linux/platform_device.h>
 
 #define HALLS_DEVICE_NAME "halls"
-#define HALLS_GPIO_FIRST 49
-#define HALLS_GPIO_SECOND 113
 
 enum {
 	KEYCODE_SLIDER_UP = 594,
@@ -29,6 +30,10 @@ struct halls_data {
 
 	int first_gpio;
 	int second_gpio;
+	int first_irq;
+	int second_irq;
+	bool gpio_requested;
+	bool irq_requested;
 };
 
 extern int elliptic_set_hall_state(int state);
@@ -75,14 +80,16 @@ static irqreturn_t halls_irq_handler(int irqno, void *dev_id) {
 	return 0;
 }
 
-static int halls_configure_irq(struct halls_data *hdata, int gpio, const char *label) {
-	int ret, irq;
+static int halls_configure_gpio(struct halls_data *hdata, int gpio,
+		const char *label) {
+	int ret;
 
 	ret = gpio_request(gpio, label);
 	if (ret) {
 		pr_err("%s: failed to request GPIO %d\n", __func__, gpio);
 		return ret;
 	}
+	hdata->gpio_requested = true;
 
 	ret = gpio_direction_input(gpio);
 	if (ret) {
@@ -90,30 +97,69 @@ static int halls_configure_irq(struct halls_data *hdata, int gpio, const char *l
 		return ret;
 	}
 
-	irq = gpio_to_irq(gpio);
-	ret = request_irq(irq, halls_irq_handler,
+	return 0;
+}
+
+static int halls_configure_irq(struct halls_data *hdata, int gpio, int *irq,
+		const char *label) {
+	int ret;
+
+	*irq = gpio_to_irq(gpio);
+	if (*irq < 0) {
+		pr_err("%s: failed to map GPIO %d to IRQ\n", __func__, gpio);
+		return *irq;
+	}
+
+	ret = request_irq(*irq, halls_irq_handler,
 			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
 			| IRQF_ONESHOT, label, hdata);
 	if (ret) {
 		pr_err("%s: failed to configure GPIO %d IRQ\n", __func__, gpio);
+		*irq = -1;
 		return ret;
 	}
+	hdata->irq_requested = true;
 
-	irq_set_irq_wake(irq, 1);
+	irq_set_irq_wake(*irq, 1);
 
 	return 0;
 }
 
-static int __init halls_init(void) {
+static void halls_free_resources(struct halls_data *hdata) {
+	if (hdata->irq_requested) {
+		irq_set_irq_wake(hdata->first_irq, 0);
+		free_irq(hdata->first_irq, hdata);
+		irq_set_irq_wake(hdata->second_irq, 0);
+		free_irq(hdata->second_irq, hdata);
+		hdata->irq_requested = false;
+	}
+	if (hdata->gpio_requested) {
+		gpio_free(hdata->first_gpio);
+		gpio_free(hdata->second_gpio);
+		hdata->gpio_requested = false;
+	}
+	if (hdata->wakelock) {
+		__pm_wakeup_event(hdata->wakelock, 0);
+		wakeup_source_unregister(hdata->wakelock);
+		hdata->wakelock = NULL;
+	}
+}
+
+static int halls_probe(struct platform_device *pdev) {
+	struct device_node *np = pdev->dev.of_node;
 	struct halls_data *hdata;
+	enum of_gpio_flags flags = 0;
 	int ret;
+
+	if (!np)
+		return -ENODEV;
 
 	hdata = kzalloc(sizeof(*hdata), GFP_KERNEL);
 	if (!hdata) {
 		pr_err("%s: failed to allocate memory for driver data\n", __func__);
-		ret = -ENOMEM;
-		goto exit;
+		return -ENOMEM;
 	}
+	platform_set_drvdata(pdev, hdata);
 
 	hdata->input = input_allocate_device();
 	if (!hdata->input) {
@@ -135,18 +181,37 @@ static int __init halls_init(void) {
 		goto free_input;
 	}
 
-	hdata->first_gpio = HALLS_GPIO_FIRST;
-	hdata->second_gpio = HALLS_GPIO_SECOND;
-
-	ret = halls_configure_irq(hdata, hdata->first_gpio, "halls-first");
-	if (ret) {
+	/*
+	 * The hall state is derived from the raw pin level, so the device tree
+	 * has to describe both GPIOs as GPIO_ACTIVE_HIGH.
+	 */
+	ret = of_get_named_gpio_flags(np, "qcom,hall-gpios", 0, &flags);
+	if (ret < 0) {
+		pr_err("%s: failed to get first hall GPIO\n", __func__);
+		ret = -EINVAL;
 		goto unregister_input;
 	}
+	hdata->first_gpio = ret;
+	if (flags & OF_GPIO_ACTIVE_LOW)
+		pr_warn("%s: first hall GPIO should be GPIO_ACTIVE_HIGH\n", __func__);
 
-	ret = halls_configure_irq(hdata, hdata->second_gpio, "halls-second");
-	if (ret) {
+	ret = of_get_named_gpio_flags(np, "qcom,hall-gpios", 1, &flags);
+	if (ret < 0) {
+		pr_err("%s: failed to get second hall GPIO\n", __func__);
+		ret = -EINVAL;
 		goto unregister_input;
 	}
+	hdata->second_gpio = ret;
+	if (flags & OF_GPIO_ACTIVE_LOW)
+		pr_warn("%s: second hall GPIO should be GPIO_ACTIVE_HIGH\n", __func__);
+
+	ret = halls_configure_gpio(hdata, hdata->first_gpio, "halls-first");
+	if (ret)
+		goto unregister_input;
+
+	ret = halls_configure_gpio(hdata, hdata->second_gpio, "halls-second");
+	if (ret)
+		goto free_gpios;
 
 	INIT_DELAYED_WORK(&hdata->notify_work, halls_notify_work_func);
 
@@ -154,21 +219,70 @@ static int __init halls_init(void) {
 	if (!hdata->wakelock) {
 		pr_err("%s: failed to register wakeup source\n", __func__);
 		ret = -EINVAL;
-		goto unregister_input;
+		goto free_gpios;
+	}
+
+	ret = halls_configure_irq(hdata, hdata->first_gpio, &hdata->first_irq,
+			"halls-first");
+	if (ret)
+		goto free_wakelock;
+
+	ret = halls_configure_irq(hdata, hdata->second_gpio, &hdata->second_irq,
+			"halls-second");
+	if (ret) {
+		free_irq(hdata->first_irq, hdata);
+		hdata->irq_requested = false;
+		goto free_wakelock;
 	}
 
 	return 0;
 
+free_wakelock:
+	wakeup_source_unregister(hdata->wakelock);
+	hdata->wakelock = NULL;
+free_gpios:
+	hdata->gpio_requested = false;
+	gpio_free(hdata->first_gpio);
+	gpio_free(hdata->second_gpio);
 unregister_input:
 	input_unregister_device(hdata->input);
 free_input:
 	input_free_device(hdata->input);
 free_halls:
 	kfree(hdata);
-exit:
 	return ret;
 }
 
-device_initcall(halls_init);
+static int halls_remove(struct platform_device *pdev) {
+	struct halls_data *hdata = platform_get_drvdata(pdev);
+
+	if (!hdata)
+		return 0;
+
+	cancel_delayed_work_sync(&hdata->notify_work);
+	halls_free_resources(hdata);
+	input_unregister_device(hdata->input);
+	input_free_device(hdata->input);
+	kfree(hdata);
+	platform_set_drvdata(pdev, NULL);
+
+	return 0;
+}
+
+static const struct of_device_id halls_of_match[] = {
+	{ .compatible = "qcom,halls" },
+	{ }
+};
+
+static struct platform_driver halls_driver = {
+	.probe = halls_probe,
+	.remove = halls_remove,
+	.driver = {
+		.name = HALLS_DEVICE_NAME,
+		.of_match_table = halls_of_match,
+	},
+};
+
+module_platform_driver(halls_driver);
 
 MODULE_LICENSE("GPL v2");

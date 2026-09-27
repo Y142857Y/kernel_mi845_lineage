@@ -12,6 +12,7 @@
 
 #include <linux/of.h>
 #include <linux/of_gpio.h>
+#include <linux/string.h>
 #include <cam_sensor_cmn_header.h>
 #include <cam_sensor_util.h>
 #include <cam_sensor_io.h>
@@ -28,6 +29,7 @@ int32_t cam_actuator_parse_dt(struct cam_actuator_ctrl_t *a_ctrl,
 		(struct cam_actuator_soc_private *)a_ctrl->soc_info.soc_private;
 	struct cam_sensor_power_ctrl_t  *power_info = &soc_private->power_info;
 	struct device_node              *of_node = NULL;
+	const char                      *vendor = NULL;
 
 	/* Initialize mutex */
 	mutex_init(&(a_ctrl->actuator_mutex));
@@ -39,6 +41,22 @@ int32_t cam_actuator_parse_dt(struct cam_actuator_ctrl_t *a_ctrl,
 	}
 
 	of_node = soc_info->dev->of_node;
+
+	a_ctrl->actuator_vendor = CAM_ACTUATOR_VENDOR_GENERIC;
+	rc = of_property_read_string(of_node, "qcom,actuator-vendor", &vendor);
+	if (!rc) {
+		if (!strcmp(vendor, "rohm")) {
+			a_ctrl->actuator_vendor = CAM_ACTUATOR_VENDOR_ROHM;
+		} else if (!strcmp(vendor, "bu64748")) {
+			a_ctrl->actuator_vendor = CAM_ACTUATOR_VENDOR_BU64748;
+		} else {
+			CAM_ERR(CAM_ACTUATOR, "Wrong vendor %s", vendor);
+		}
+		CAM_DBG(CAM_ACTUATOR, "actuator vendor %d",
+			a_ctrl->actuator_vendor);
+	} else if (rc != -EINVAL) {
+		CAM_ERR(CAM_ACTUATOR, "actuator vendor read failed rc %d", rc);
+	}
 
 	if (a_ctrl->io_master_info.master_type == CCI_MASTER) {
 		rc = of_property_read_u32(of_node, "cci-master",
