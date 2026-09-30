@@ -810,15 +810,6 @@ int kgsl_pwrscale_init(struct device *dev, const char *governor)
 	if (profile->max_state == 1)
 		governor = "performance";
 
-	/*
-	 * Our own ondemand governor has to be visible to the devfreq core
-	 * before the device is registered, otherwise the lookup in
-	 * devfreq_add_device() fails and the GPU loses DVFS completely.
-	 */
-	if (kgsl_ondemand_governor_register())
-		pr_warn("Failed to register %s governor, using %s instead\n",
-			KGSL_GOVERNOR_ONDEMAND, governor);
-
 	/* initialize msm-adreno-tz governor specific data here */
 	data = gpu_profile->private_data;
 
@@ -869,16 +860,6 @@ int kgsl_pwrscale_init(struct device *dev, const char *governor)
 
 	devfreq = devfreq_add_device(dev, &pwrscale->gpu_profile.profile,
 			governor, pwrscale->gpu_profile.private_data);
-	if (IS_ERR(devfreq) && !strcmp(governor, KGSL_GOVERNOR_ONDEMAND))
-		/*
-		 * devfreq_add_device() refuses the device when the governor
-		 * is unknown, so give the TZ governor another try instead of
-		 * ending up with no DVFS at all.
-		 */
-		devfreq = devfreq_add_device(dev,
-				&pwrscale->gpu_profile.profile,
-				KGSL_GOVERNOR_TZ,
-				pwrscale->gpu_profile.private_data);
 	if (IS_ERR(devfreq)) {
 		device->pwrscale.enabled = false;
 		return PTR_ERR(devfreq);
