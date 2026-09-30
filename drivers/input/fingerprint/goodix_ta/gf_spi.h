@@ -8,6 +8,7 @@
 
 #include <linux/types.h>
 #include <linux/notifier.h>
+#include <linux/atomic.h>
 /**********************************************************/
 enum FP_MODE{
 	GF_IMAGE_MODE = 0,
@@ -130,7 +131,7 @@ struct gf_dev {
 	signed reset_gpio;
 	signed pwr_gpio;
 	int irq;
-	int irq_enabled;
+	atomic_t irq_enabled;
 	int clk_enabled;
 #ifdef GF_FASYNC
 	struct fasync_struct *async;

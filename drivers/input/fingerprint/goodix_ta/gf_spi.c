@@ -105,8 +105,9 @@ struct gf_key_map maps[] = {
  * 此时 desc->depth 仍是 0，内核 __enable_irq() 便报 Unbalanced enable for
  * IRQ；两边还各自多记了一次 enable/disable，IRQ 最终停在错误的屏蔽态。
  *
- * 改成 cmpxchg 做状态切换，只有真正拿到状态变化的那一路才 enable/disable，
- * 使 enable_irq()/disable_irq() 严格成对，flag 与 desc->depth 保持一致。
+ * 改成 cmpxchg 做状态切换（irq_enabled 随之从 int 改成 atomic_t），只有真正
+ * 拿到状态变化的那一路才 enable/disable，使 enable_irq()/disable_irq() 严格
+ * 成对，flag 与 desc->depth 保持一致。
  */
 static void gf_enable_irq(struct gf_dev *gf_dev)
 {
@@ -596,7 +597,7 @@ static int gf_open(struct inode *inode, struct file *filp)
 
 			if (!rc) {
 				enable_irq_wake(gf_dev->irq);
-				gf_dev->irq_enabled = 1;
+				atomic_set(&gf_dev->irq_enabled, 1);
 				gf_disable_irq(gf_dev);
 			}
 
