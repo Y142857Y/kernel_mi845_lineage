@@ -319,11 +319,11 @@ struct devfreq_passive_data {
 	struct devfreq *this;
 	struct notifier_block nb;
 };
+#endif
 
 /* Add/remove a governor that is not built into the devfreq core */
 int devfreq_add_governor(struct devfreq_governor *governor);
 int devfreq_remove_governor(struct devfreq_governor *governor);
-#endif
 
 #else /* !CONFIG_PM_DEVFREQ */
 static inline struct devfreq *devfreq_add_device(struct device *dev,
