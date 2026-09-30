@@ -25,6 +25,7 @@
 #include <linux/err.h>
 #include <linux/list.h>
 #include <linux/errno.h>
+#include <linux/atomic.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/compat.h>
@@ -96,24 +97,27 @@ struct gf_key_map maps[] = {
 #endif
 };
 
+/*
+ * fp 的 IRQ 会被 HAL 的 GF_IOC_ENABLE_IRQ/DISABLE_IRQ 与 PocketMode 的
+ * proximity_state sysfs 并发操作，两边都走这两个函数。原实现是"读 flag ->
+ * 判断 -> 写 flag"三步且不加锁：一边正在 gf_disable_irq()（已把 flag 清 0、
+ * 还没走到 disable_irq()）时，另一边看到 flag 为 0 就直接 enable_irq()，
+ * 此时 desc->depth 仍是 0，内核 __enable_irq() 便报 Unbalanced enable for
+ * IRQ；两边还各自多记了一次 enable/disable，IRQ 最终停在错误的屏蔽态。
+ *
+ * 改成 cmpxchg 做状态切换，只有真正拿到状态变化的那一路才 enable/disable，
+ * 使 enable_irq()/disable_irq() 严格成对，flag 与 desc->depth 保持一致。
+ */
 static void gf_enable_irq(struct gf_dev *gf_dev)
 {
-	if (gf_dev->irq_enabled) {
-		pr_warn("IRQ has been enabled.\n");
-	} else {
+	if (atomic_cmpxchg(&gf_dev->irq_enabled, 0, 1) == 0)
 		enable_irq(gf_dev->irq);
-		gf_dev->irq_enabled = 1;
-	}
 }
 
 static void gf_disable_irq(struct gf_dev *gf_dev)
 {
-	if (gf_dev->irq_enabled) {
-		gf_dev->irq_enabled = 0;
+	if (atomic_cmpxchg(&gf_dev->irq_enabled, 1, 0) == 1)
 		disable_irq(gf_dev->irq);
-	} else {
-		pr_warn("IRQ has been disabled.\n");
-	}
 }
 
 #ifdef AP_CONTROL_CLK
