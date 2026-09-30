@@ -1557,28 +1557,31 @@ static inline void perf_event__state_init(struct perf_event *event)
 					      PERF_EVENT_STATE_INACTIVE;
 }
 
-static void __perf_event_read_size(struct perf_event *event, int nr_siblings)
+static int __perf_event_read_size(u64 read_format, int nr_siblings)
 {
 	int entry = sizeof(u64); /* value */
 	int size = 0;
 	int nr = 1;
 
-	if (event->attr.read_format & PERF_FORMAT_TOTAL_TIME_ENABLED)
+	if (read_format & PERF_FORMAT_TOTAL_TIME_ENABLED)
 		size += sizeof(u64);
 
-	if (event->attr.read_format & PERF_FORMAT_TOTAL_TIME_RUNNING)
+	if (read_format & PERF_FORMAT_TOTAL_TIME_RUNNING)
 		size += sizeof(u64);
 
-	if (event->attr.read_format & PERF_FORMAT_ID)
+	if (read_format & PERF_FORMAT_ID)
 		entry += sizeof(u64);
 
-	if (event->attr.read_format & PERF_FORMAT_GROUP) {
+	if (read_format & PERF_FORMAT_GROUP) {
 		nr += nr_siblings;
 		size += sizeof(u64);
 	}
 
-	size += entry * nr;
-	event->read_size = size;
+	/*
+	 * Since perf_event_validate_size() limits this to 16k and inhibits
+	 * adding more siblings, this will never overflow.
+	 */
+	return size + nr * entry;
 }
 
 static void __perf_event_header_size(struct perf_event *event, u64 sample_type)
@@ -1616,8 +1619,9 @@ static void __perf_event_header_size(struct perf_event *event, u64 sample_type)
  */
 static void perf_event__header_size(struct perf_event *event)
 {
-	__perf_event_read_size(event,
-			       event->group_leader->nr_siblings);
+	event->read_size =
+		__perf_event_read_size(event->attr.read_format,
+				       event->group_leader->nr_siblings);
 	__perf_event_header_size(event, event->attr.sample_type);
 }
 
@@ -1650,11 +1654,14 @@ static void perf_event__id_header_size(struct perf_event *event)
 
 static bool perf_event_validate_size(struct perf_event *event)
 {
+	struct perf_event *sibling, *group_leader = event->group_leader;
+
 	/*
 	 * The values computed here will be over-written when we actually
 	 * attach the event.
 	 */
-	__perf_event_read_size(event, event->group_leader->nr_siblings + 1);
+	event->read_size = __perf_event_read_size(event->attr.read_format,
+						  group_leader->nr_siblings + 1);
 	__perf_event_header_size(event, event->attr.sample_type & ~PERF_SAMPLE_READ);
 	perf_event__id_header_size(event);
 
@@ -1665,6 +1672,25 @@ static bool perf_event_validate_size(struct perf_event *event)
 	if (event->read_size + event->header_size +
 	    event->id_header_size + sizeof(struct perf_event_header) >= 16*1024)
 		return false;
+
+	/*
+	 * Check that adding an event to the group does not result in
+	 * anybody overflowing the 64k limit imposed by the output buffer.
+	 * The read_size depends on the (per event) read_format and on the
+	 * number of siblings, so the already existing events must be
+	 * re-checked as well; their sizes are only recomputed when the new
+	 * event actually gets attached.
+	 */
+	if (__perf_event_read_size(group_leader->attr.read_format,
+				   group_leader->nr_siblings + 1) > 16*1024)
+		return false;
+
+	list_for_each_entry(sibling, &group_leader->sibling_list,
+			    group_entry) {
+		if (__perf_event_read_size(sibling->attr.read_format,
+					   group_leader->nr_siblings + 1) > 16*1024)
+			return false;
+	}
 
 	return true;
 }
