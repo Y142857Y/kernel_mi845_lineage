@@ -32,8 +32,66 @@
 #define KGSL_ONDEMAND_UP_THRESHOLD 60
 #define KGSL_ONDEMAND_DOWN_THRESHOLD 20
 
+/*
+ * Duty cycle that the proportional path below aims for.
+ *
+ * It has to sit inside the dead band.  If it were at or above
+ * KGSL_ONDEMAND_UP_THRESHOLD the settled level would immediately read as
+ * "busy enough to climb" and the governor would walk straight back up to the
+ * top level on the next window, which is the same 710MHz pinning this is
+ * meant to remove.  Halfway between the two thresholds leaves room to move
+ * in either direction before a step-up or step-down is needed.
+ *
+ * A fixed piece of work takes proportionally less time on a faster GPU, so
+ * the level we settle on is the slowest one that still predicts this duty
+ * cycle.
+ */
+#define KGSL_ONDEMAND_TARGET_BUSY 40
+
 /* Sampling windows shorter than this (us) carry too little data to trust */
 #define KGSL_ONDEMAND_MIN_WINDOW 1000
+
+/**
+ * kgsl_ondemand_level_for_load - slowest level that still covers the workload
+ * @devfreq: the devfreq instance
+ * @level: the level the GPU is running at now
+ * @busy_pct: measured duty cycle of the polling window, in percent
+ *
+ * Turns the busy time measured at @level into the frequency that would hit
+ * KGSL_ONDEMAND_TARGET_BUSY, then returns the slowest table entry that is
+ * still at least that fast.
+ *
+ * Without this the thresholds alone only ever step one level at a time and the
+ * 20..60 dead band freezes the clock wherever the last excursion left it: a
+ * video encode that keeps the GPU 24% busy stays pinned at 710MHz even though
+ * 257MHz finishes the same frames with room to spare.
+ */
+static int kgsl_ondemand_level_for_load(struct devfreq *devfreq, int level,
+		unsigned int busy_pct)
+{
+	unsigned long *freq_table = devfreq->profile->freq_table;
+	int max_state = devfreq->profile->max_state;
+	u64 need;
+
+	need = div_u64((u64)freq_table[level] * busy_pct,
+			KGSL_ONDEMAND_TARGET_BUSY);
+
+	/* Already fast enough at the top level, or too slow even at the bottom */
+	if (need >= freq_table[0])
+		return 0;
+	if (need <= freq_table[max_state - 1])
+		return max_state - 1;
+
+	/*
+	 * freq_table runs fastest first, so the first entry that is still at
+	 * least as fast as we need is the slowest sufficient level.
+	 */
+	for (level = 0; level < max_state; level++)
+		if (freq_table[level] >= need)
+			break;
+
+	return min(level, max_state - 1);
+}
 
 /**
  * kgsl_ondemand_get_target_freq - pick a level from the measured GPU busy time
@@ -41,7 +99,8 @@
  * @freq: where to store the requested frequency
  *
  * Climb one level when the GPU was busier than the up threshold, drop one
- * level when it was idle enough, and otherwise stay where we are.
+ * level when it was idle enough, and otherwise settle on the level that the
+ * measured duty cycle actually calls for.
  */
 static int kgsl_ondemand_get_target_freq(struct devfreq *devfreq,
 		unsigned long *freq)
@@ -93,6 +152,8 @@ static int kgsl_ondemand_get_target_freq(struct devfreq *devfreq,
 		level = max(0, level - 1);
 	else if (busy_pct <= KGSL_ONDEMAND_DOWN_THRESHOLD)
 		level = min(max_state - 1, level + 1);
+	else
+		level = kgsl_ondemand_level_for_load(devfreq, level, busy_pct);
 
 	*freq = devfreq->profile->freq_table[level];
 
