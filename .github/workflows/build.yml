@@ -83,7 +83,7 @@ jobs:
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           export KBUILD_BUILD_USER=${{ github.repository_owner }}
           export KBUILD_BUILD_HOST=github-runner
-          export KBUILD_BUILD_TIMESTAMP=`date -u -d "@$(git log -1 --format=%at)" +"%a %b %d %H:%M:%S %Z %Y"`
+          export KBUILD_BUILD_TIMESTAMP="Sat Aug 01 00:00:00 UTC 2026"
           make ${{ env.MAKE_ARGS }} ${{ env.CONFIG_FILES }} all
 
           mkdir -p dist
@@ -119,6 +119,8 @@ jobs:
           fi
           EOF
           zip -qr9 Anykernel3-universal.zip * -x .git .github README.md *placeholder
+          cp "$GITHUB_WORKSPACE/kernel/kernel/ak3-core.sh" tools/ak3-core.sh
+          zip -9 Anykernel3-${{ matrix.device }}.zip tools/ak3-core.sh
 
       - name: 上传文件
         uses: actions/upload-artifact@main
