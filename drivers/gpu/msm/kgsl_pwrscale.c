@@ -339,13 +339,20 @@ int kgsl_devfreq_target(struct device *dev, unsigned long *freq, u32 flags)
 
 	/* If the governor recommends a new frequency, update it here */
 	if (rec_freq != cur_freq) {
-		level = pwr->max_pwrlevel;
 		/*
-		 * Array index of pwrlevels[] should be within the permitted
-		 * power levels, i.e., from max_pwrlevel to min_pwrlevel.
+		 * Pick the highest permitted level that is still at least as
+		 * fast as the requested frequency, so the clock never runs
+		 * faster than asked for.  A request below the lowest permitted
+		 * level is clamped to min_pwrlevel: that field is a floor, not
+		 * the place where the search starts.
+		 *
+		 * Walking downwards from min_pwrlevel (as this used to do)
+		 * made the loop collapse into a single iteration once
+		 * min_pwrlevel was 0, pinning the GPU at the top frequency and
+		 * leaving no way back down.
 		 */
-		for (i = pwr->min_pwrlevel; (i >= pwr->max_pwrlevel
-					  && i <= pwr->min_pwrlevel); i--)
+		level = pwr->min_pwrlevel;
+		for (i = pwr->max_pwrlevel; (i <= pwr->min_pwrlevel); i++) {
 			if (rec_freq <= pwr->pwrlevels[i].gpu_freq) {
 				if (pwr->thermal_cycle == CYCLE_ACTIVE)
 					level = _thermal_adjust(pwr, i);
@@ -353,6 +360,7 @@ int kgsl_devfreq_target(struct device *dev, unsigned long *freq, u32 flags)
 					level = i;
 				break;
 			}
+		}
 		if (level != pwr->active_pwrlevel)
 			kgsl_pwrctrl_pwrlevel_change(device, level);
 	}
@@ -802,6 +810,15 @@ int kgsl_pwrscale_init(struct device *dev, const char *governor)
 	if (profile->max_state == 1)
 		governor = "performance";
 
+	/*
+	 * Our own ondemand governor has to be visible to the devfreq core
+	 * before the device is registered, otherwise the lookup in
+	 * devfreq_add_device() fails and the GPU loses DVFS completely.
+	 */
+	if (kgsl_ondemand_governor_register())
+		pr_warn("Failed to register %s governor, using %s instead\n",
+			KGSL_GOVERNOR_ONDEMAND, governor);
+
 	/* initialize msm-adreno-tz governor specific data here */
 	data = gpu_profile->private_data;
 
@@ -852,6 +869,16 @@ int kgsl_pwrscale_init(struct device *dev, const char *governor)
 
 	devfreq = devfreq_add_device(dev, &pwrscale->gpu_profile.profile,
 			governor, pwrscale->gpu_profile.private_data);
+	if (IS_ERR(devfreq) && !strcmp(governor, KGSL_GOVERNOR_ONDEMAND))
+		/*
+		 * devfreq_add_device() refuses the device when the governor
+		 * is unknown, so give the TZ governor another try instead of
+		 * ending up with no DVFS at all.
+		 */
+		devfreq = devfreq_add_device(dev,
+				&pwrscale->gpu_profile.profile,
+				KGSL_GOVERNOR_TZ,
+				pwrscale->gpu_profile.private_data);
 	if (IS_ERR(devfreq)) {
 		device->pwrscale.enabled = false;
 		return PTR_ERR(devfreq);

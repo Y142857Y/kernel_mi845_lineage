@@ -105,6 +105,10 @@ struct kgsl_pwrscale {
 	unsigned int ctxt_aware_busy_penalty;
 };
 
+#define KGSL_GOVERNOR_ONDEMAND "kgsl-ondemand"
+#define KGSL_GOVERNOR_TZ "msm-adreno-tz"
+
+int kgsl_ondemand_governor_register(void);
 int kgsl_pwrscale_init(struct device *dev, const char *governor);
 void kgsl_pwrscale_close(struct kgsl_device *device);
 

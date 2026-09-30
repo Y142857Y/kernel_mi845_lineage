@@ -7,6 +7,7 @@ msm_kgsl_core-y = \
 	kgsl_sharedmem.o \
 	kgsl_pwrctrl.o \
 	kgsl_pwrscale.o \
+	kgsl_ondemand.o \
 	kgsl_mmu.o \
 	kgsl_events.o \
 	kgsl_pool.o \
