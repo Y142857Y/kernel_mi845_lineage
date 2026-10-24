@@ -40,6 +40,7 @@
 #include <linux/anon_inodes.h>
 #include <linux/atomic.h>
 #include <linux/binfmts.h>
+#include <linux/bitmap.h>
 #include <linux/cache.h>
 #include <linux/capability.h>
 #include <linux/compat.h>
@@ -93,6 +94,7 @@
 #include <linux/seccomp.h>
 #include <linux/security.h>
 #include <linux/seq_file.h>
+#include <linux/shmem_fs.h>
 #include <linux/slab.h>
 #include <linux/stddef.h>
 #include <linux/string.h>
@@ -279,7 +281,7 @@ typedef typeof(nullptr) nullptr_t;
 #define __static_assert(expr, msg, ...) _Static_assert(expr, msg)
 #define static_assert(expr, ...) __static_assert(expr, ##__VA_ARGS__, #expr)
 #endif
-#if defined(KSU_HAS_C23) && defined(static_assert)
+#if defined(KSU_HAS_C23) && defined(static_assert) // undef kernel's static_assert
 #undef static_assert
 #endif
 
@@ -303,12 +305,12 @@ typedef typeof(nullptr) nullptr_t;
 #elif __has_attribute(__fallthrough__) || defined(__clang__)
 #define fallthrough __attribute__((__fallthrough__))
 #else
-#define fallthrough do {} while (0) /* fallthrough */
+#define fallthrough do { } while (0) /* fallthrough */
 #endif
 #endif
 
 /**
- * hardcodable assumptions for micro-optimizations
+ * expr assumptions for micro-optimizations
  */
 #if defined(__clang__)
 #define assume(expr) __builtin_assume(expr)
@@ -319,6 +321,24 @@ typedef typeof(nullptr) nullptr_t;
 	if (unlikely(!(expr)))			\
 		__builtin_unreachable();	\
 } while (0)
+#endif
+
+/**
+ * *ptr + sizeof(*ptr) assumptions for micro-optimizations
+ */
+#if defined(__clang__) && __has_builtin(__builtin_assume_dereferenceable)
+#define assume_dereferenceable(ptr, size) __builtin_assume_dereferenceable(ptr, size)
+#else
+#define assume_dereferenceable(ptr, size) do { } while (0)
+#endif
+
+/**
+ * restriction assumptions for micro-optimizations
+ */
+#if defined(__clang__) && __has_builtin(__builtin_assume_separate_storage)
+#define assume_restricted(ptr1, ptr2) __builtin_assume_separate_storage(ptr1, ptr2)
+#else
+#define assume_restricted(ptr1, ptr2) do { } while (0)
 #endif
 
 /**
@@ -398,12 +418,11 @@ typedef unsigned __int128 uint128_t;
 
 /**
  * __may_alias to workaround "optimizations" even on -fno-strict-aliasing
- *
  */
 #define __may_alias __attribute__((__may_alias__))
 
 /**
- * __attribute__((__cleanup__()))
+ * __attribute__((__cleanup__(fn)))
  * - pseudo-raii / defer / scoped cleanup on C 
  *
  * NOTE: passes address of variable attributed to fn()
@@ -465,24 +484,21 @@ static inline void kfree_byref(void *buf) { kfree(*(void **)buf); }
 #endif // !CONFIG_KSU_DEBUG
 
 /**
- * redirect all dmesg/printk logging messages to kernel's no_printk macro.
- * this is an option offerred to shut up KernelSU's routine logging.
+ * no-op all dmesg/printk logging messages
+ * option offerred to shut up KernelSU's logging.
  *
  */
 #if defined(CONFIG_KSU_NOPRINTK) && !defined(CONFIG_KSU_DEBUG)
-#ifndef no_printk
-#define no_printk(...) do { } while (0)
-#endif
-#define pr_emerg(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_alert(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_crit(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_err(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_warn(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_notice(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_info(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_debug(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_devel(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define printk(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
+#define pr_emerg(...)	do { } while (0)
+#define pr_alert(...)	do { } while (0)
+#define pr_crit(f...)	do { } while (0)
+#define pr_err(...)	do { } while (0)
+#define pr_warn(...)	do { } while (0)
+#define pr_notice(...)	do { } while (0)
+#define pr_info(...)	do { } while (0)
+#define pr_debug(...)	do { } while (0)
+#define pr_devel(...)	do { } while (0)
+#define printk(...)	do { } while (0)
 #endif // CONFIG_KSU_NOPRINTK && !CONFIG_KSU_DEBUG
 
 /**

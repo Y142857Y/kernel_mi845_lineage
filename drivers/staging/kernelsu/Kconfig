@@ -51,6 +51,16 @@ config KSU_TAMPER_SYSCALL_TABLE
 	  complies with Clang CFI.
 	  Verified on 3.0 ~ 7.1. Recommended for 3.0 ~ 4.14.
 
+config KSU_DISABLE_32BIT_HOOKS
+	bool "disable 32-bit symbol hooking"
+	depends on KSU
+	depends on 64BIT && COMPAT
+	depends on (KSU_TAMPER_SYSCALL_TABLE || KSU_HACK_ARM64_BRANCH_LINK)
+	default n
+	help
+	  Skips hooking 32-bit syscalls (compat_sys_call_table). Mostly useful for zygote64-only devices.
+	  Author assumes you know what you're doing, __builtin_assume(!!&user_brain).
+
 config KSU_LSM_SECURITY_HOOKS
 	bool "Use LSM security hooks"
 	depends on KSU
@@ -84,6 +94,14 @@ config KSU_HOSTSREDIRECT
 	  be used with bindhosts mode 3. If /data/adb/hosts does NOT exist at boot, the syscall
 	  hook is automatically skipped. See like ZN-hostsredirect / APatch hosts file redirect.
 	  If unsure, say n.
+
+config KSU_GETPRIORITY_FILTER_DEMO
+	bool "filter sys_getpriority"
+	depends on KSU
+	depends on (ARM || ARM64)
+	default n
+	help
+	  demo feature. also WIP. subject to changes.
 
 config KSU_ENABLE_FULL_UID_CHECKS
 	bool "perform full uid checks (reduced performance)"
@@ -130,5 +148,7 @@ config KSU_HEURISTIC_IN_TREE_BUILD
 	bool "heuristic. do NOT touch"
 	depends on KSU
 	default y
+	help
+	  Note: if youre building out-of-tree, configure by editing ksu.c #defines instead.
 
 endmenu

@@ -1,6 +1,8 @@
 #ifndef __KSU_H_UID_OBSERVER
 #define __KSU_H_UID_OBSERVER
 
+#define KSU_PACKAGE_NAME "me.weishu.kernelsu"
+
 void ksu_throne_tracker_init();
 
 void ksu_throne_tracker_exit();
