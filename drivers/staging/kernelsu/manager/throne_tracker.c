@@ -67,7 +67,7 @@ static bool maybe_manager_apk_dir(const char *path)
 {
 	_Static_assert(sizeof(KSU_PACKAGE_NAME) < KSU_MAX_PACKAGE_NAME, "KSU_PACKAGE_NAME too long!");
 	char pkg[KSU_MAX_PACKAGE_NAME];
-	if (get_pkg_from_apk_path(pkg, path) < 0) {
+	if (get_pkg_from_apk_dir_path(pkg, path) < 0)  {
 		pr_err("Failed to get package name from apk dir path: %s\n", path);
 		return false;
 	}
