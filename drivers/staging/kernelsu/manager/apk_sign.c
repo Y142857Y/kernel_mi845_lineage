@@ -20,6 +20,30 @@ bool check_v2_signature(char *path, unsigned expected_size,
 {
 	return true;
 }
+// /data/app/XXXXX/<PACKAGE_NAME>-YYY, which contains base.apk
+int get_pkg_from_apk_dir_path(char *pkg, const char *path)
+{
+	int len = strlen(path);
+	if (len >= KSU_MAX_PACKAGE_NAME || len < 1)
+		return -1;
+
+	const char *last_slash = strrchr(path, '/');
+	if (!last_slash)
+		return -1;
+
+	const char *last_hyphen = strchr(last_slash, '-');
+	if (!last_hyphen)
+		return -1;
+
+	int pkg_len = last_hyphen - last_slash - 1;
+	if (pkg_len >= KSU_MAX_PACKAGE_NAME || pkg_len <= 0)
+		return -1;
+
+	memcpy(pkg, last_slash + 1, pkg_len);
+	pkg[pkg_len] = '\0';
+
+	return 0;
+}
 
 int get_pkg_from_apk_path(char *pkg, const char *path)
 {
