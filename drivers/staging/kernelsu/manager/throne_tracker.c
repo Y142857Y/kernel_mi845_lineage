@@ -352,7 +352,7 @@ static void throne_tracker_fn(bool prune_only)
 			}
 		}
 		pr_info("Searching manager " KSU_PACKAGE_NAME "...\n");
-		search_manager("/data/app", 2, &uid_list);
+		search_manager("/data/app", 3, &uid_list);
 		pr_info("Search manager finished\n");
 	}
 
