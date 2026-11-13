@@ -88,10 +88,6 @@ jobs:
           export KBUILD_BUILD_TIMESTAMP="Sat Oct 01 00:00:00 UTC 2026"
           make ${{ env.MAKE_ARGS }} ${{ env.CONFIG_FILES }} all
 
-          mkdir -p dist
-          find out/arch/arm64/boot/dts -name "*.dtbo" | \
-          xargs python3 scripts/mkdtboimg.py create dist/dtbo.img --page_size=4096
-
       - name: 打包完整 boot.img
         working-directory: kernel
         run: |
@@ -104,12 +100,15 @@ jobs:
                          -e "s|--output [^ ]*||g" \
                          unpacked/mkbootimg_args)
           eval "mkbootimg $NEW_ARGS --output $PWD/dist/boot.img"
+          ORIG_SIZE=$(stat -c%s prebuilt/original_boot.img)
+          CUR_SIZE=$(stat -c%s dist/boot.img)
+          if [ "$CUR_SIZE" -lt "$ORIG_SIZE" ]; then
+            truncate -s "$ORIG_SIZE" dist/boot.img
+          fi
           ls -lh dist/
 
       - name: 上传文件
         uses: actions/upload-artifact@main
         with:
           name: kernel-universal-boot
-          path: |
-            kernel/dist/boot.img
-            kernel/dist/dtbo.img
+          path: kernel/dist/boot.img
