@@ -11,6 +11,7 @@ on:
 env:
   AOSP_TOOLCHAIN_BRANCH: android16
   AOSP_CLANG_VERSION: r547379
+  ORIGINAL_BOOT_IMG_URL: https://github.com/Y142857Y/kernel_mi845_lineage/releases/download/none/boot.img
 
 jobs:
   build:
@@ -91,20 +92,18 @@ jobs:
           find out/arch/arm64/boot/dts -name "*.dtbo" | \
           xargs python3 scripts/mkdtboimg.py create dist/dtbo.img --page_size=4096
 
-      - name: 打包 boot.img
+      - name: 打包完整 boot.img
         working-directory: kernel
         run: |
-          pip install --quiet mkbootimg
-          mkbootimg \
-            --kernel out/arch/arm64/boot/Image.gz-dtb \
-            --cmdline "console=ttyMSM0,115200n8 androidboot.hardware=qcom androidboot.console=ttyMSM0" \
-            --base 0x00000000 \
-            --kernel_offset 0x00008000 \
-            --ramdisk_offset 0x01000000 \
-            --tags_offset 0x00000100 \
-            --pagesize 4096 \
-            --header_version 0 \
-            --output dist/boot.img
+          pip install --quiet --upgrade mkbootimg
+          mkdir -p prebuilt dist
+          wget -q -c "$ORIGINAL_BOOT_IMG_URL" -O prebuilt/original_boot.img
+          rm -rf unpacked && mkdir -p unpacked
+          unpack_bootimg --boot_img prebuilt/original_boot.img --out "$PWD/unpacked" --format=mkbootimg
+          NEW_ARGS=$(sed -e "s|--kernel [^ ]*|--kernel $PWD/out/arch/arm64/boot/Image.gz-dtb|" \
+                         -e "s|--output [^ ]*||g" \
+                         unpacked/mkbootimg_args)
+          eval "mkbootimg $NEW_ARGS --output $PWD/dist/boot.img"
           ls -lh dist/
 
       - name: 上传文件
@@ -114,5 +113,3 @@ jobs:
           path: |
             kernel/dist/boot.img
             kernel/dist/dtbo.img
-
- 
