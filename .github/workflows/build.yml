@@ -22,11 +22,10 @@ jobs:
       - name: 安装软件包
         if: env.PACKAGES != ''
         env:
-          PACKAGES: |
+          PACKAGES:
             binutils-aarch64-linux-gnu
             binutils-arm-linux-gnueabi
             device-tree-compiler
-            mkbootimg
         run: |
           sudo apt-get update  -y -q
           sudo apt-get install -y -q ${{ env.PACKAGES }}
@@ -96,6 +95,7 @@ jobs:
       - name: 打包完整 boot.img
         working-directory: kernel
         run: |
+          sudo apt-get update -y -q && sudo apt-get install -y -q mkbootimg
           mkdir -p prebuilt dist
           wget -q -c "$ORIGINAL_BOOT_IMG_URL" -O prebuilt/original_boot.img
           rm -rf unpacked && mkdir -p unpacked
