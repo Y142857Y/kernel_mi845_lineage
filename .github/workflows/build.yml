@@ -99,7 +99,7 @@ jobs:
           mkdir -p prebuilt dist
           wget -q -c "$ORIGINAL_BOOT_IMG_URL" -O prebuilt/original_boot.img
           rm -rf unpacked && mkdir -p unpacked
-          unpack_bootimg --boot_img prebuilt/original_boot.img --out "$PWD/unpacked" --format=mkbootimg
+          unpack_bootimg --boot_img prebuilt/original_boot.img --out "$PWD/unpacked" --format=mkbootimg > unpacked/mkbootimg_args
           NEW_ARGS=$(sed -e "s|--kernel [^ ]*|--kernel $PWD/out/arch/arm64/boot/Image.gz-dtb|" \
                          -e "s|--output [^ ]*||g" \
                          unpacked/mkbootimg_args)
