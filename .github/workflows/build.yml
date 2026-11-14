@@ -10,6 +10,8 @@ on:
 env:
   AOSP_TOOLCHAIN_BRANCH: android16
   AOSP_CLANG_VERSION: r547379
+  ORIGINAL_BOOT_IMG_URL: https://github.com/Y142857Y/kernel_mi845_lineage/releases/download/none/boot.img
+  MAGISK_VERSION: v27.0
 
 jobs:
   build:
@@ -24,6 +26,7 @@ jobs:
             binutils-aarch64-linux-gnu
             binutils-arm-linux-gnueabi
             device-tree-compiler
+            cpio
         run: |
           sudo apt-get update -y -q
           sudo apt-get install -y -q ${{ env.PACKAGES }}
@@ -84,6 +87,7 @@ jobs:
           export KBUILD_BUILD_USER=${{ github.repository_owner }}
           export KBUILD_BUILD_HOST=github-runner
           export KBUILD_BUILD_TIMESTAMP=`date -u -d "@$(git log -1 --format=%at)" +"%a %b %d %H:%M:%S %Z %Y"`
+
           rm -rf out
 
           make ${{ env.MAKE_ARGS }} ${{ env.CONFIG_FILES }} all
@@ -91,53 +95,72 @@ jobs:
           mkdir -p dist
           find out/arch/arm64/boot/dts -name "*.dtbo" | \
           xargs python3 scripts/mkdtboimg.py create dist/dtbo.img --page_size=4096
-    
 
-      - name: 打包(AnyKernel3)
+      - name: 验证编译产物无 KSU 残留
+        working-directory: kernel
         run: |
-          git clone https://github.com/osm0sis/AnyKernel3 --depth=1 ak3
-          cp kernel/out/arch/arm64/boot/Image.gz-dtb ak3/
-          cp kernel/dist/dtbo.img ak3/
-          cd ak3
-          cat >anykernel.sh <<'EOF'
-          properties() { '
-          kernel.string=Kernel for Mi845 (dipper/ursa/equuleus/beryllium/polaris/perseus)
-          device.name1=dipper
-          device.name2=ursa
-          device.name3=equuleus
-          device.name4=beryllium
-          device.name5=polaris
-          device.name6=perseus
-          do.devicecheck=1
-          '; }
-          BLOCK=auto;
-          IS_SLOT_DEVICE=auto;
-          RAMDISK_COMPRESSION=auto;
-          PATCH_VBMETA_FLAG=auto;
-          . tools/ak3-core.sh
-          split_boot
-          mkdir -p $AKHOME/ramdisk_clean
-          cd $AKHOME/ramdisk_clean
-          cpio -idmv < $AKHOME/ramdisk.cpio 2>/dev/null || true
-          rm -f init.kernelsu.rc ksud kernelsu* 2>/dev/null || true
-          find . -maxdepth 2 -iname "*ksu*" -o -iname "*kernelsu*" 2>/dev/null | xargs -r 
-          rm -f for f in init*.rc; do
-          if [ -f "$f" ]; then
-          sed -i '/kernelsu/d;/KernelSU/d;/ksud/d' "$f"
+          echo "===== Checking Image for KSU symbols ====="
+          gunzip -c out/arch/arm64/boot/Image.gz-dtb > /tmp/Image 2>/dev/null || true
+          if strings /tmp/Image | grep -iE "ksu_handle|kernelsu_init|kernelsu_"; then
+            echo "::error::KSU symbols found in build output, source or cache not cleaned"
+            exit 1
           fi
-          done
-          find . | cpio -o -H newc > $AKHOME/ramdisk.cpio 2>/dev/null
-          cd $AKHOME
-          rm -rf ramdisk_clean
-          flash_boot
-          if [ "$(getprop ro.product.device)" = "perseus" ]; then
-          flash_generic dtbo
+          echo "===== Checking .config for KSU ====="
+          if grep -i "CONFIG_KSU" out/.config; then
+            echo "::error::CONFIG_KSU still present in out/.config, defconfig not cleaned"
+            exit 1
           fi
-          EOF
-          zip -qr9 Anykernel3-universal.zip * -x .git .github README.md *placeholder
+          echo "===== Validation passed ====="
+
+      - name: 下载 magiskboot
+        run: |
+          wget -q "https://github.com/topjohnwu/Magisk/releases/download/${{ env.MAGISK_VERSION }}/Magisk-${{ env.MAGISK_VERSION }}.apk" -O magisk.apk
+          unzip -o magisk.apk "lib/x86_64/libmagiskboot.so" -d magisk_extract
+          mv magisk_extract/lib/x86_64/libmagiskboot.so magiskboot
+          chmod +x magiskboot
+          ./magiskboot --help | head -1
+
+      - name: 打包 boot.img
+        working-directory: kernel/dist
+        run: |
+          wget -q -c "$ORIGINAL_BOOT_IMG_URL" -O original_boot.img
+          ls -lh original_boot.img
+
+          $GITHUB_WORKSPACE/magiskboot unpack original_boot.img
+          ls -la
+
+          cp ../out/arch/arm64/boot/Image.gz-dtb kernel
+
+          if [ -f ramdisk.cpio ]; then
+            echo "===== Checking ramdisk for KSU remnants ====="
+            mkdir -p ramdisk_extract
+            cd ramdisk_extract
+            cpio -idm < ../ramdisk.cpio 2>/dev/null || true
+
+            rm -f init.kernelsu.rc ksud kernelsu* 2>/dev/null || true
+            find . -maxdepth 3 \( -iname "*ksu*" -o -iname "*kernelsu*" \) -exec rm -f {} \; 2>/dev/null || true
+
+            for f in init*.rc; do
+              if [ -f "$f" ]; then
+                sed -i '/kernelsu/d;/KernelSU/d;/ksud/d' "$f"
+              fi
+            done
+
+            find . | cpio -o -H newc > ../ramdisk.cpio 2>/dev/null
+            cd ..
+            rm -rf ramdisk_extract
+            echo "===== Ramdisk cleanup done ====="
+          fi
+
+          $GITHUB_WORKSPACE/magiskboot repack original_boot.img boot.img
+
+          rm -f kernel ramdisk.cpio dtb extra second kernel_dtb header
+          ls -lh boot.img
 
       - name: 上传文件
         uses: actions/upload-artifact@main
         with:
-          name: kernel-universal-ak3
-          path: ak3/Anykernel3-universal.zip
+          name: kernel-boot-img
+          path: |
+            kernel/dist/boot.img
+            kernel/dist/dtbo.img
