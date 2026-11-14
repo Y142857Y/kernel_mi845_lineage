@@ -12,6 +12,7 @@ env:
   AOSP_TOOLCHAIN_BRANCH: android16
   AOSP_CLANG_VERSION: r547379
   ORIGINAL_BOOT_IMG_URL: https://github.com/Y142857Y/kernel_mi845_lineage/releases/download/none/boot.img
+  MAGISK_VERSION: v27.0
 
 jobs:
   build:
@@ -88,31 +89,28 @@ jobs:
           export KBUILD_BUILD_TIMESTAMP="Sat Oct 01 00:00:00 UTC 2026"
           make ${{ env.MAKE_ARGS }} ${{ env.CONFIG_FILES }} all
 
+      - name: 下载 magiskboot
+        run: |
+          wget -q "https://github.com/topjohnwu/Magisk/releases/download/${{ env.MAGISK_VERSION }}/Magisk-${{ env.MAGISK_VERSION }}.apk" -O magisk.apk
+          unzip -o magisk.apk "lib/x86_64/libmagiskboot.so" -d magisk_extract
+          mv magisk_extract/lib/x86_64/libmagiskboot.so magiskboot
+          chmod +x magiskboot
+          ./magiskboot --help | head -1
+
       - name: 打包完整 boot.img
         working-directory: kernel
         run: |
-          sudo apt-get update -y -q && sudo apt-get install -y -q mkbootimg openssl
           mkdir -p prebuilt dist
           wget -q -c "$ORIGINAL_BOOT_IMG_URL" -O prebuilt/original_boot.img
-          rm -rf unpacked && mkdir -p unpacked
-          unpack_bootimg --boot_img prebuilt/original_boot.img --out "$PWD/unpacked" --format=mkbootimg > unpacked/mkbootimg_args
-          NEW_ARGS=$(sed -e "s|--kernel [^ ]*|--kernel $PWD/out/arch/arm64/boot/Image.gz-dtb|" \
-                         -e "s|--output [^ ]*||g" \
-                         unpacked/mkbootimg_args)
-          eval "mkbootimg $NEW_ARGS --output $PWD/dist/boot.img"
+          cp prebuilt/original_boot.img dist/boot.img
 
-          wget -q "https://android.googlesource.com/platform/external/avb/+/refs/heads/main/avbtool?format=TEXT" -O avbtool.b64
-          base64 -d avbtool.b64 > avbtool && chmod +x avbtool
-          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out testkey.pem 2>/dev/null
+          cd dist
+          ../$GITHUB_WORKSPACE/magiskboot unpack boot.img
+          cp ../out/arch/arm64/boot/Image.gz-dtb kernel
+          ../$GITHUB_WORKSPACE/magiskboot repack ../prebuilt/original_boot.img boot.img
 
-          ORIG_SIZE=$(stat -c%s prebuilt/original_boot.img)
-          python3 avbtool add_hash_footer \
-            --image dist/boot.img \
-            --partition_name boot \
-            --partition_size $ORIG_SIZE \
-            --key testkey.pem \
-            --algorithm SHA256_RSA2048
-
+          rm -f kernel ramdisk.cpio dtb extra second kernel_dtb
+          cd ..
           ls -lh dist/
 
       - name: 上传文件
