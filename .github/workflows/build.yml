@@ -5,14 +5,11 @@ on:
     branches:
       - dev/*
       - stable/*
-      - patch2/*
   workflow_dispatch:
 
 env:
   AOSP_TOOLCHAIN_BRANCH: android16
   AOSP_CLANG_VERSION: r547379
-  ORIGINAL_BOOT_IMG_URL: https://github.com/Y142857Y/kernel_mi845_lineage/releases/download/none/boot.img
-  MAGISK_VERSION: v27.0
 
 jobs:
   build:
@@ -86,35 +83,47 @@ jobs:
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           export KBUILD_BUILD_USER=${{ github.repository_owner }}
           export KBUILD_BUILD_HOST=github-runner
-          export KBUILD_BUILD_TIMESTAMP="Sat Oct 01 00:00:00 UTC 2026"
+          export KBUILD_BUILD_TIMESTAMP=`date -u -d "@$(git log -1 --format=%at)" +"%a %b %d %H:%M:%S %Z %Y"`
           make ${{ env.MAKE_ARGS }} ${{ env.CONFIG_FILES }} all
 
-      - name: 下载 magiskboot
+          mkdir -p dist
+          find out/arch/arm64/boot/dts -name "*.dtbo" | \
+          xargs python3 scripts/mkdtboimg.py create dist/dtbo.img --page_size=4096
+
+      - name: 打包(AnyKernel3)
         run: |
-          wget -q "https://github.com/topjohnwu/Magisk/releases/download/${{ env.MAGISK_VERSION }}/Magisk-${{ env.MAGISK_VERSION }}.apk" -O magisk.apk
-          unzip -o magisk.apk "lib/x86_64/libmagiskboot.so" -d magisk_extract
-          mv magisk_extract/lib/x86_64/libmagiskboot.so magiskboot
-          chmod +x magiskboot
-          ./magiskboot --help | head -1
-
-      - name: 打包完整 boot.img
-        working-directory: kernel
-        run: |
-          mkdir -p prebuilt dist
-          wget -q -c "$ORIGINAL_BOOT_IMG_URL" -O prebuilt/original_boot.img
-          cp prebuilt/original_boot.img dist/boot.img
-
-          cd dist
-          ../$GITHUB_WORKSPACE/magiskboot unpack boot.img
-          cp ../out/arch/arm64/boot/Image.gz-dtb kernel
-          ../$GITHUB_WORKSPACE/magiskboot repack ../prebuilt/original_boot.img boot.img
-
-          rm -f kernel ramdisk.cpio dtb extra second kernel_dtb
-          cd ..
-          ls -lh dist/
+          git clone https://github.com/osm0sis/AnyKernel3 --depth=1 ak3
+          cp kernel/out/arch/arm64/boot/Image.gz-dtb ak3/
+          cp kernel/dist/dtbo.img ak3/
+          cd ak3
+          cat >anykernel.sh <<'EOF'
+          properties() { '
+          kernel.string=Kernel for Mi845 (dipper/ursa/equuleus/beryllium/polaris/perseus)
+          device.name1=dipper
+          device.name2=ursa
+          device.name3=equuleus
+          device.name4=beryllium
+          device.name5=polaris
+          device.name6=perseus
+          do.devicecheck=1
+          '; }
+          BLOCK=auto;
+          IS_SLOT_DEVICE=auto;
+          RAMDISK_COMPRESSION=auto;
+          PATCH_VBMETA_FLAG=auto;
+          . tools/ak3-core.sh
+          split_boot
+          flash_boot
+          if [ "$(getprop ro.product.device)" = "perseus" ]; then
+          flash_generic dtbo
+          fi
+          EOF
+          zip -qr9 Anykernel3-universal.zip * -x .git .github README.md *placeholder
 
       - name: 上传文件
         uses: actions/upload-artifact@main
         with:
-          name: kernel-universal-boot
-          path: kernel/dist/boot.img
+          name: kernel-universal-ak3
+          path: ak3/Anykernel3-universal.zip
+
+ 
