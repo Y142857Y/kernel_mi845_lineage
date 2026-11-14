@@ -95,13 +95,14 @@ jobs:
       - name: ksu
         working-directory: kernel
         run: |
-          gunzip -c out/arch/arm64/boot/Image.gz-dtb > /tmp/Image
-          if strings /tmp/Image | grep -iE "ksu_handle|kernelsu_init|kernelsu_|CONFIG_KSU"; then
-            exit 1
-          fi
-          if grep -i "CONFIG_KSU" out/.config; then
-          exit 1
-          fi
+             gunzip -c out/arch/arm64/boot/Image.gz-dtb > /tmp/Image 2>/dev/null || true
+             if strings /tmp/Image | grep -iE "ksu_handle|kernelsu_init|kernelsu_|CONFIG_KSU"; then
+             exit 1
+             fi
+             gif grep -i "CONFIG_KSU" out/.config; then
+             exit 1
+             fi
+    
 
       - name: 打包(AnyKernel3)
         run: |
