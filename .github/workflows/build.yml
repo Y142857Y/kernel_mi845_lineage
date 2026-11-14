@@ -25,7 +25,7 @@ jobs:
             binutils-arm-linux-gnueabi
             device-tree-compiler
         run: |
-          sudo apt-get update  -y -q
+          sudo apt-get update -y -q
           sudo apt-get install -y -q ${{ env.PACKAGES }}
 
       - name: 同步仓库
@@ -58,8 +58,8 @@ jobs:
       - name: 缓存ccache
         uses: hendrikmuhs/ccache-action@main
         with:
-          key: kernel-universal
-          restore-keys: kernel-universal
+          key: kernel-universal-v2-remove-ksu
+          restore-keys: kernel-universal-v2-remove-ksu
           max-size: 5G
 
       - name: 编译
@@ -84,11 +84,24 @@ jobs:
           export KBUILD_BUILD_USER=${{ github.repository_owner }}
           export KBUILD_BUILD_HOST=github-runner
           export KBUILD_BUILD_TIMESTAMP=`date -u -d "@$(git log -1 --format=%at)" +"%a %b %d %H:%M:%S %Z %Y"`
+          rm -rf out
+
           make ${{ env.MAKE_ARGS }} ${{ env.CONFIG_FILES }} all
 
           mkdir -p dist
           find out/arch/arm64/boot/dts -name "*.dtbo" | \
           xargs python3 scripts/mkdtboimg.py create dist/dtbo.img --page_size=4096
+
+      - name: ksu
+        working-directory: kernel
+        run: |
+          gunzip -c out/arch/arm64/boot/Image.gz-dtb > /tmp/Image
+          if strings /tmp/Image | grep -iE "ksu_handle|kernelsu_init|kernelsu_|CONFIG_KSU"; then
+            exit 1
+          fi
+          if grep -i "CONFIG_KSU" out/.config; then
+          exit 1
+          fi
 
       - name: 打包(AnyKernel3)
         run: |
@@ -113,6 +126,19 @@ jobs:
           PATCH_VBMETA_FLAG=auto;
           . tools/ak3-core.sh
           split_boot
+          mkdir -p $AKHOME/ramdisk_clean
+          cd $AKHOME/ramdisk_clean
+          cpio -idmv < $AKHOME/ramdisk.cpio 2>/dev/null || true
+          rm -f init.kernelsu.rc ksud kernelsu* 2>/dev/null || true
+          find . -maxdepth 2 -iname "*ksu*" -o -iname "*kernelsu*" 2>/dev/null | xargs -r 
+          rm -f for f in init*.rc; do
+          if [ -f "$f" ]; then
+          sed -i '/kernelsu/d;/KernelSU/d;/ksud/d' "$f"
+          fi
+          done
+          find . | cpio -o -H newc > $AKHOME/ramdisk.cpio 2>/dev/null
+          cd $AKHOME
+          rm -rf ramdisk_clean
           flash_boot
           if [ "$(getprop ro.product.device)" = "perseus" ]; then
           flash_generic dtbo
@@ -125,5 +151,3 @@ jobs:
         with:
           name: kernel-universal-ak3
           path: ak3/Anykernel3-universal.zip
-
- 
