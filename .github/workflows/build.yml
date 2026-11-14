@@ -5,11 +5,13 @@ on:
     branches:
       - dev/*
       - stable/*
+      - patch2/*
   workflow_dispatch:
 
 env:
   AOSP_TOOLCHAIN_BRANCH: android16
   AOSP_CLANG_VERSION: r547379
+  ORIGINAL_BOOT_IMG_URL: https://github.com/Y142857Y/kernel_mi845_lineage/releases/download/none/boot.img
 
 jobs:
   build:
@@ -27,6 +29,7 @@ jobs:
         run: |
           sudo apt-get update  -y -q
           sudo apt-get install -y -q ${{ env.PACKAGES }}
+
       - name: 同步仓库
         uses: actions/checkout@main
         with:
@@ -46,6 +49,7 @@ jobs:
           mkdir -p clang
           wget -c -t 10 "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/${{ env.AOSP_TOOLCHAIN_BRANCH }}-release/clang-${{ env.AOSP_CLANG_VERSION }}.tar.gz" -O clang.tgz
           tar -zxvf clang.tgz -C clang/
+
       - name: 保存Clang
         if: always() && steps.cache-clang.outputs.cache-hit != 'true' && steps.download_clang.outcome == 'success'
         uses: actions/cache/save@main
@@ -83,42 +87,36 @@ jobs:
           export KBUILD_BUILD_HOST=github-runner
           export KBUILD_BUILD_TIMESTAMP="Sat Oct 01 00:00:00 UTC 2026"
           make ${{ env.MAKE_ARGS }} ${{ env.CONFIG_FILES }} all
-          mkdir -p dist
-          find out/arch/arm64/boot/dts -name "*.dtbo" | \
-          xargs python3 scripts/mkdtboimg.py create dist/dtbo.img --page_size=4096
-      - name: 打包(AnyKernel3)
+
+      - name: 打包完整 boot.img
+        working-directory: kernel
         run: |
-          git clone https://github.com/osm0sis/AnyKernel3 --depth=1 ak3
-          cp kernel/out/arch/arm64/boot/Image.gz-dtb ak3/
-          cp kernel/dist/dtbo.img ak3/
-          cd ak3
-          cat >anykernel.sh <<'EOF'
-          properties() { '
-          kernel.string=Kernel for Mi845 (dipper/ursa/equuleus/beryllium/polaris/perseus)
-          device.name1=dipper
-          device.name2=ursa
-          device.name3=equuleus
-          device.name4=beryllium
-          device.name5=polaris
-          device.name6=perseus
-          do.devicecheck=1
-          '; }
-          BLOCK=auto;
-          IS_SLOT_DEVICE=auto;
-          RAMDISK_COMPRESSION=auto;
-          PATCH_VBMETA_FLAG=auto;
-          . tools/ak3-core.sh
-          split_boot
-          flash_boot
-          if [ "$(getprop ro.product.device)" = "perseus" ]; then
-          flash_generic dtbo
-          fi
-          EOF
-          zip -qr9 Anykernel3-universal.zip * -x .git .github README.md *placeholder
-          cp "$GITHUB_WORKSPACE/kernel/kernel/ak3-core.sh" tools/ak3-core.sh
-          zip -9 Anykernel3-${{ matrix.device }}.zip tools/ak3-core.sh
+          sudo apt-get update -y -q && sudo apt-get install -y -q mkbootimg openssl
+          mkdir -p prebuilt dist
+          wget -q -c "$ORIGINAL_BOOT_IMG_URL" -O prebuilt/original_boot.img
+          rm -rf unpacked && mkdir -p unpacked
+          unpack_bootimg --boot_img prebuilt/original_boot.img --out "$PWD/unpacked" --format=mkbootimg > unpacked/mkbootimg_args
+          NEW_ARGS=$(sed -e "s|--kernel [^ ]*|--kernel $PWD/out/arch/arm64/boot/Image.gz-dtb|" \
+                         -e "s|--output [^ ]*||g" \
+                         unpacked/mkbootimg_args)
+          eval "mkbootimg $NEW_ARGS --output $PWD/dist/boot.img"
+
+          wget -q "https://android.googlesource.com/platform/external/avb/+/refs/heads/main/avbtool?format=TEXT" -O avbtool.b64
+          base64 -d avbtool.b64 > avbtool && chmod +x avbtool
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out testkey.pem 2>/dev/null
+
+          ORIG_SIZE=$(stat -c%s prebuilt/original_boot.img)
+          python3 avbtool add_hash_footer \
+            --image dist/boot.img \
+            --partition_name boot \
+            --partition_size $ORIG_SIZE \
+            --key testkey.pem \
+            --algorithm SHA256_RSA2048
+
+          ls -lh dist/
+
       - name: 上传文件
         uses: actions/upload-artifact@main
         with:
-          name: kernel-universal-ak3
-          path: ak3/Anykernel3-universal.zip
+          name: kernel-universal-boot
+          path: kernel/dist/boot.img
