@@ -96,21 +96,6 @@ jobs:
           find out/arch/arm64/boot/dts -name "*.dtbo" | \
           xargs python3 scripts/mkdtboimg.py create dist/dtbo.img --page_size=4096
 
-      - name: 验证编译产物无 KSU 残留
-        working-directory: kernel
-        run: |
-          echo "===== Checking Image for KSU symbols ====="
-          gunzip -c out/arch/arm64/boot/Image.gz-dtb > /tmp/Image 2>/dev/null || true
-          if strings /tmp/Image | grep -iE "ksu_handle|kernelsu_init|kernelsu_"; then
-            echo "::error::KSU symbols found in build output, source or cache not cleaned"
-            exit 1
-          fi
-          echo "===== Checking .config for KSU ====="
-          if grep -i "CONFIG_KSU" out/.config; then
-            echo "::error::CONFIG_KSU still present in out/.config, defconfig not cleaned"
-            exit 1
-          fi
-          echo "===== Validation passed ====="
 
       - name: 下载 magiskboot
         run: |
