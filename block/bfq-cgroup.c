@@ -769,7 +769,18 @@ static void bfq_pd_offline(struct blkg_policy_data *pd)
 	BUG_ON(bfqg->sched_data.next_in_service);
 	BUG_ON(bfqg->sched_data.in_service_entity);
 
-	__bfq_deactivate_entity(entity, false);
+	/*
+	 * A bfq_group that never got hooked into the BFQ hierarchy (its
+	 * cgroup did not issue any I/O after this scheduler got installed)
+	 * has entity->sched_data == NULL and is not on any service tree.
+	 * There is nothing to deactivate for it, and calling
+	 * __bfq_deactivate_entity() on such an entity would dereference the
+	 * NULL sched_data in bfq_entity_service_tree() and BUG() (observed
+	 * both when switching the I/O scheduler away from bfq and, on
+	 * Android, when a cgroup gets destroyed).
+	 */
+	if (entity->sched_data)
+		__bfq_deactivate_entity(entity, false);
 	bfq_put_async_queues(bfqd, bfqg);
 
 	/*
