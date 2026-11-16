@@ -4767,15 +4767,19 @@ static void cfq_registered_queue(struct request_queue *q)
 	struct cfq_data *cfqd = e->elevator_data;
 
 	/*
-	 * Default to IOPS mode with no idling for SSDs
+	 * Default to IOPS mode with no idling for SSDs.
+	 *
+	 * group_idle must be zeroed as well, otherwise cfq_arm_slice_timer()
+	 * skips its "no idling on non-rotational devices" fast path as soon as
+	 * CONFIG_CFQ_GROUP_IOSCHED is enabled, and CFQ starts idling on flash.
 	 */
-	if (blk_queue_nonrot(q))
+	if (blk_queue_nonrot(q)) {
 		cfqd->cfq_slice_idle = 0;
+		cfqd->cfq_group_idle = 0;
+	}
 }
-
-/*
- * sysfs parts below -->
- */
+     /* sysfs parts below -->
+      */
 static ssize_t
 cfq_var_show(unsigned int var, char *page)
 {
@@ -4801,7 +4805,7 @@ static ssize_t __FUNC(struct elevator_queue *e, char *page)		\
 	return cfq_var_show(__data, (page));				\
 }
 SHOW_FUNCTION(cfq_quantum_show, cfqd->cfq_quantum, 0);
-SHOW_FUNCTION(cfq_fifo_expire_sync_show, cfqd->cfq_fifo_expire[1], 1);
+SHOW_FUNCTION(cfq_ffo_expire_sync_show, cfqd->cfq_fifo_expire[1], 1);
 SHOW_FUNCTION(cfq_fifo_expire_async_show, cfqd->cfq_fifo_expire[0], 1);
 SHOW_FUNCTION(cfq_back_seek_max_show, cfqd->cfq_back_max, 0);
 SHOW_FUNCTION(cfq_back_seek_penalty_show, cfqd->cfq_back_penalty, 0);
