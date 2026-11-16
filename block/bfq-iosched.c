@@ -4887,6 +4887,14 @@ static int bfq_init_queue(struct request_queue *q, struct elevator_type *e)
 	bfqd->bfq_back_max = bfq_back_max;
 	bfqd->bfq_back_penalty = bfq_back_penalty;
 	bfqd->bfq_slice_idle = bfq_slice_idle;
+	/*
+	 * Idling only pays off on rotational media, where the extra delay
+	 * lets the disk serve the next request without another seek.  On
+	 * flash it just adds latency, so switch it off there -- the same
+	 * thing cfq does for nonrot queues in cfq_init_queue().
+	 */
+	if (blk_queue_nonrot(bfqd->queue))
+		bfqd->bfq_slice_idle = 0;
 	bfqd->bfq_timeout = bfq_timeout;
 
 	bfqd->bfq_requests_within_timer = 120;
