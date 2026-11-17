@@ -102,9 +102,14 @@ static void load_module_rc_once(void)
 	}
 
 	fsize = i_size_read(file_inode(f));
-	if (fsize == 0) {
+	if (!fsize) {
 		pr_warn("module rc: skip empty module rc\n");
 		goto out_close_file;
+	}
+
+	if (fsize > MODULE_RC_MAX) {
+		pr_warn("module rc: %s is %zu bytes, clamping to %u\n", path, fsize, MODULE_RC_MAX);
+		fsize = MODULE_RC_MAX;
 	}
 
 	module_rc_buf = kvmalloc(fsize, GFP_KERNEL);
