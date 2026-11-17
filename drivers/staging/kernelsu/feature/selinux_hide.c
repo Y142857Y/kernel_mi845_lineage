@@ -50,6 +50,10 @@ static __always_inline int ksu_hide_setprocattr_inline(const char *name, void *v
 	if (!size)
 		return 0;
 
+	// we rewrite byte 1 below, so a 1 byte value must be rejected
+	if (size < 2)
+		return 0;
+
 	if (!name)
 		return 0;
 
@@ -84,6 +88,10 @@ static __always_inline int ksu_hide_setxattr_inline(const char *name, void *valu
 		return 0;
 
 	if (!size)
+		return 0;
+
+	// we rewrite byte 1 below, so a 1 byte value must be rejected
+	if (size < 2)
 		return 0;
 
 	if (!name)

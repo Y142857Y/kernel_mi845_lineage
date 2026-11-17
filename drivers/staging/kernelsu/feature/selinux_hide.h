@@ -27,6 +27,10 @@ struct ksu_hide_buf {
 	char data[];
 } __attribute__((aligned(sizeof(size_t))));
 
+// hard caps, so a misbehaving manager cannot grow these lists without bound
+#define KSU_HIDE_TYPE_LIST_MAX (256u * 1024u)
+#define KSU_HIDE_RULE_LIST_MAX (512u * 1024u)
+
 // types
 // :type1:\0:type2:\0:type3:\0
 static struct ksu_hide_buf *ksu_hide_type_list __read_mostly = nullptr;
@@ -111,30 +115,40 @@ static noinline void ksu_add_shit_to_list(u32 cmd, const char *args[])
 	if (cmd == KSU_SEPOLICY_CMD_TYPE || cmd == KSU_SEPOLICY_CMD_TYPE_ATTR || cmd == KSU_SEPOLICY_CMD_TYPE_STATE || cmd == KSU_SEPOLICY_CMD_ATTR) {
 		
 		const char *name = args[0];
-		size_t needed_len = strlen(name) + 3; // :type:\0
+		size_t name_len = strlen(name);
+		size_t needed_len = name_len + 3; // :type:\0
 
 		if (!ksu_hide_type_list)
 			goto skip_type_dup_check;
 
-		// anti duplicate
+		// anti duplicate: compare ":name:" exactly, without a fixed
+		// size stack buffer, so long type names still dedupe correctly
 		size_t offset = 0;
 		while (ksu_hide_type_list->len > offset) {
 			const char *current_type = ksu_hide_type_list->data + offset;
+			size_t current_len = strlen(current_type) + 1;
 
-			char tmp_buf[64];
-			snprintf(tmp_buf, sizeof(tmp_buf), ":%s:", name);
-
-			if (!strcmp(current_type, tmp_buf))
+			if (current_len == needed_len && current_type[0] == ':' &&
+			    !memcmp(current_type + 1, name, name_len))
 				return;
 
-			offset = offset + strlen(current_type) + 1;
+			offset = offset + current_len;
 		}
 
 	skip_type_dup_check:;
 		size_t old_len = (ksu_hide_type_list) ? ksu_hide_type_list->len : 0;
 		size_t new_total_len = old_len + needed_len;
 
-		struct ksu_hide_buf *new_ptr = kmalloc(sizeof(*new_ptr) + new_total_len, GFP_KERNEL | __GFP_NOFAIL);
+		if (new_total_len > KSU_HIDE_TYPE_LIST_MAX) {
+			pr_warn_once("selinux_hide: type list full, skip: %s\n", name);
+			return;
+		}
+
+		struct ksu_hide_buf *new_ptr = kmalloc(sizeof(*new_ptr) + new_total_len, GFP_KERNEL);
+		if (!new_ptr) {
+			pr_warn_once("selinux_hide: failed to grow type list\n");
+			return;
+		}
 		new_ptr->len = new_total_len;
 
 		if (ksu_hide_type_list && old_len > 0)
@@ -156,15 +170,18 @@ static noinline void ksu_add_shit_to_list(u32 cmd, const char *args[])
 
 		const char *src = args[0];
 		const char *tgt = args[1];
+		size_t src_len = strlen(src);
+		size_t tgt_len = strlen(tgt);
 
-		size_t src_needed = strlen(src) + 3; // :src:\0
-		size_t tgt_needed = strlen(tgt) + 3; // :tgt:\0
+		size_t src_needed = src_len + 3; // :src:\0
+		size_t tgt_needed = tgt_len + 3; // :tgt:\0
 		size_t needed_len = src_needed + tgt_needed;
 
 		if (!ksu_hide_rule_list)
 			goto skip_rule_dup_check;
 
-		// anti duplicate
+		// anti duplicate: compare ":src:" / ":tgt:" exactly, without
+		// fixed size stack buffers, so long names still dedupe correctly
 		size_t offset = 0;
 		while (ksu_hide_rule_list->len > offset) {
 			const char *src_chk = ksu_hide_rule_list->data + offset;
@@ -173,11 +190,10 @@ static noinline void ksu_add_shit_to_list(u32 cmd, const char *args[])
 			const char *tgt_chk = src_chk + src_sz;
 			size_t tgt_sz = strlen(tgt_chk) + 1; // for \0
 
-			char src_buf[64], tgt_buf[64];
-			snprintf(src_buf, sizeof(src_buf), ":%s:", src);
-			snprintf(tgt_buf, sizeof(tgt_buf), ":%s:", tgt);
-
-			if (!strcmp(src_chk, src_buf) && !strcmp(tgt_chk, tgt_buf))
+			if (src_sz == src_needed && tgt_sz == tgt_needed &&
+			    src_chk[0] == ':' && tgt_chk[0] == ':' &&
+			    !memcmp(src_chk + 1, src, src_len) &&
+			    !memcmp(tgt_chk + 1, tgt, tgt_len))
 				return;
 
 			offset = offset + src_sz + tgt_sz;
@@ -187,7 +203,16 @@ static noinline void ksu_add_shit_to_list(u32 cmd, const char *args[])
 		size_t old_len = (ksu_hide_rule_list) ? ksu_hide_rule_list->len : 0;
 		size_t new_total_len = old_len + needed_len;
 
-		struct ksu_hide_buf *new_ptr = kmalloc(sizeof(*new_ptr) + new_total_len, GFP_KERNEL | __GFP_NOFAIL);
+		if (new_total_len > KSU_HIDE_RULE_LIST_MAX) {
+			pr_warn_once("selinux_hide: rule list full, skip: %s %s\n", src, tgt);
+			return;
+		}
+
+		struct ksu_hide_buf *new_ptr = kmalloc(sizeof(*new_ptr) + new_total_len, GFP_KERNEL);
+		if (!new_ptr) {
+			pr_warn_once("selinux_hide: failed to grow rule list\n");
+			return;
+		}
 		new_ptr->len = new_total_len;
 
 		if (ksu_hide_rule_list && old_len > 0)
