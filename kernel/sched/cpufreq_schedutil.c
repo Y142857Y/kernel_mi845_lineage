@@ -925,8 +925,8 @@ static int sugov_init(struct cpufreq_policy *policy)
 	 * intializing up_rate/down_rate explicitly in kernel
 	 * since WALT expects so by default.
 	 */
-	tunables->up_rate_limit_us = 500;    // 0.5ms
-	tunables->down_rate_limit_us = 20000;  // 20ms
+	tunables->up_rate_limit_us = 2000;    // 2ms
+	tunables->down_rate_limit_us = 15000;  // 15ms
 
 	/* Disable iowait_boost by default in kernel */
 	tunables->iowait_boost_enable = false;
