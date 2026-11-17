@@ -5,11 +5,9 @@
 
 // for OOT builds like on ddk, just enable everything
 #ifndef CONFIG_KSU_HEURISTIC_IN_TREE_BUILD
-	#define CONFIG_KSU_GETPRIORITY_FILTER_DEMO 1
-	#define CONFIG_KSU_HOSTSREDIRECT 1
+	// #define LSM_USES_BRANCH_LINK 1
 	#define CONFIG_KSU_LSM_SECURITY_HOOKS 1
 	#define CONFIG_KSU_HACK_ARM64_BRANCH_LINK 1
-	#define CONFIG_KSU_FEATURE_SULOG 1
 	#define CONFIG_KSU_FEATURE_ADBROOT 1
 	#define CONFIG_KSU_THRONE_TRACKER_ALWAYS_THREADED 1
 #endif // CONFIG_KSU_HEURISTIC_IN_TREE_BUILD
@@ -78,9 +76,9 @@
 #undef CONFIG_COMPAT
 #endif
 
-#ifdef CONFIG_KPROBES
-#include "downstream/kprobes_common.h"
-#endif
+// syscall table defs and patcher
+#include "downstream/syscall_table_common.h"
+#include "downstream/vmap_patch.h"
 
 #ifdef CONFIG_KALLSYMS
 #include "external/chibihash64.h"
@@ -91,20 +89,21 @@
 #endif
 
 #ifdef CONFIG_ARM64
-#include "downstream/arm64_branch_insn.h"
+#include "downstream/arm64_branch_patch.h"
+#include "downstream/arm64_syscall_table_mirror.h"
+#include "downstream/arm64_tiny_trampoline.h"
+#endif
+
+#ifdef CONFIG_KPROBES
+#include "downstream/kprobes_common.h"
 #endif
 
 #include "downstream/slow_avc_audit_defs.h"
 #include "downstream/tiny_sulog.h"
 #include "downstream/toolkit.h"
-#include "downstream/vmap_patch.h"
 
 #ifdef CONFIG_KSU_HOSTSREDIRECT
 #include "downstream/ksu_hostsredirect.h"
-#endif
-
-#ifdef CONFIG_KSU_GETPRIORITY_FILTER_DEMO
-#include "downstream/ksu_getpriority.h"
 #endif
 
 // unity build
@@ -149,7 +148,7 @@
 #include "hook/setuid_hook.c"
 
 #ifdef CONFIG_KSU_LSM_SECURITY_HOOKS
-	#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0) || defined(LSM_USES_BRANCH_LINK)
 	#include "hook/lsm_hooks_static.c"
 	#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0)
 	#include "hook/lsm_hooks_list.c"
@@ -175,16 +174,70 @@
 #ifdef CONFIG_KSU_HACK_ARM64_BRANCH_LINK
 #undef syscall_table_sucompat_enable
 #undef syscall_table_sucompat_disable
-#include "hook/syscall_table_hook_arm64.c" // included as fallback
+#include "hook/syscall_table_hook_arm64.c"
 #include "hook/branch_link_hook_arm64.c"
 #endif
 
-#if defined(CONFIG_KSU_KPROBES_KSUD) && !defined(CONFIG_KSU_TAMPER_SYSCALL_TABLE) && !defined(CONFIG_KSU_HACK_ARM64_BRANCH_LINK)
-#include "hook/kp_ksud.c"
+// track backports and other quirks here
+// ref: kernel_compat.c, Makefile
+// yes looks nasty
+#if defined(CONFIG_KSU_DEBUG)
+	#define FEAT_1 " +debug"
+#else
+	#define FEAT_1 ""
 #endif
+#if defined(CONFIG_KSU_EXTRAS)
+	#define FEAT_2 " +extras"
+#else
+	#define FEAT_2 ""
+#endif
+#if defined(CONFIG_KSU_TAMPER_SYSCALL_TABLE)
+	#define FEAT_3 " +syscall_table_hook"
+#else
+	#define FEAT_3 ""
+#endif
+#if !defined(CONFIG_KSU_LSM_SECURITY_HOOKS)
+	#define FEAT_4 " -lsm_hooks"
+#else
+	#define FEAT_4 ""
+#endif
+#if defined(CONFIG_KSU_HACK_ARM64_BRANCH_LINK)
+	#define FEAT_5 " +arm64_branch_link"
+#else
+	#define FEAT_5 ""
+#endif
+#if defined(KSU_COMPAT_HAS_EXPORTED_POLICY_RWLOCK)
+	#define FEAT_6 " +policy_rwlock"
+#else
+	#define FEAT_6 ""
+#endif
+#if defined(MODULE)
+	#define FEAT_7 " +lkm"
+#else
+	#define FEAT_7 ""
+#endif
+
+#define EXTRA_FEATURES FEAT_1 FEAT_2 FEAT_3 FEAT_4 FEAT_5 FEAT_6 FEAT_7
+
+static inline void ksu_print_build_info(void)
+{
+	pr_info("Initialized on: %s (%s)%s\n", UTS_RELEASE, UTS_MACHINE, EXTRA_FEATURES);
+
+#if defined(__VERSION__) && defined(__STDC_VERSION__)
+#if defined(__clang_version__)
+	pr_info("Built with: Clang %d.%d.%d w/ stdc: %ld\n", __clang_major__, __clang_minor__, __clang_patchlevel__, __STDC_VERSION__);
+#else
+	pr_info("Built with: GCC %s w/ stdc: %ld\n", __VERSION__, __STDC_VERSION__);
+#endif
+#endif
+
+}
 
 static int __init kernelsu_init(void)
 {
+	pr_info("welcome to KernelSU version " __stringify(KERNEL_SU_VERSION) ", package name " KSU_PACKAGE_NAME "\n");
+	ksu_print_build_info();
+
 #ifdef CONFIG_KSU_DEBUG
 	pr_alert("*************************************************************");
 	pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
@@ -203,28 +256,17 @@ static int __init kernelsu_init(void)
 		return -ENOSYS;
 	}
 
-#ifdef KSU_CAN_USE_MODULE_BLACKLIST
-	ksu_module_blacklist_init(); // Block modules early, before vendor modules are loaded in second stage.
-#endif
 	// register features
 	ksu_feature_init();
 	ksu_sucompat_init();
 	ksu_kernel_umount_init();
-#ifdef CONFIG_KSU_FEATURE_SULOG	
 	ksu_sulog_init();
-#endif
 #ifdef CONFIG_KSU_FEATURE_ADBROOT
 	ksu_adb_root_init();
 #endif
 	ksu_selinux_hide_init();
 	ksu_shell_su_adb_only_init();
-
-	ksu_core_init();
 	ksu_supercalls_init();
-
-#if defined(CONFIG_KSU_KPROBES_KSUD) && !defined(CONFIG_KSU_TAMPER_SYSCALL_TABLE) && !defined(CONFIG_KSU_HACK_ARM64_BRANCH_LINK)
-	kp_ksud_init();
-#endif
 
 	ksu_allowlist_init();
 	ksu_throne_tracker_init();
@@ -240,9 +282,11 @@ static int __init kernelsu_init(void)
 	ksu_branch_link_patch_init();
 #endif
 
-#ifdef CONFIG_KSU_GETPRIORITY_FILTER_DEMO
-	ksu_getpriority_init();
+#ifdef KSU_CAN_USE_MODULE_BLACKLIST
+	ksu_module_blacklist_init(); // Block modules early, before vendor modules are loaded in second stage.
 #endif
+
+	ksu_lsm_hook_init();
 	return 0;
 }
 
@@ -267,25 +311,29 @@ static int __init kernelsu_lkm_init(void)
 	// list_del(&THIS_MODULE->list);
 	kobject_del(&THIS_MODULE->mkobj.kobj); // tiann/KernelSU fefb02e
 
-#if 0
 	if (current->pid == 1)
 		return 0;
 
-	escape_to_root_forced();
+	ksu_late_loaded = true;
 
-	stop_vfs_read_hook();
+	stop_init_rc_hook();
 	apply_kernelsu_rules();
 	cache_sid();
 	setup_ksu_cred();
+	escape_to_root_forced();
+
+	track_throne(false);
 	on_post_fs_data();
 	on_boot_completed();
+
 	ksu_feature_apply_forced();
+	kthread_run(ksu_disable_preinit_branch, nullptr, "kthread");
 
 	if (!!getenforce())
 		return 0;
 	pr_info("Permissive SELinux, enforcing\n");
 	setenforce(true);
-#endif
+
 	return 0;
 }
 

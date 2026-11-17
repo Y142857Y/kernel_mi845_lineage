@@ -11,8 +11,8 @@
  *
  */
 
-#ifndef __KSU_H_ARM64_BL_PATCH
-#define __KSU_H_ARM64_BL_PATCH
+#ifndef __H_ARM64_BRANCH_PATCH
+#define __H_ARM64_BRANCH_PATCH
 
 #include <linux/version.h>
 #include <linux/uaccess.h>
@@ -111,13 +111,8 @@ start_scan:
 
 	pr_info("%s: found call site at 0x%lx w/ .inst 0x%x \n", __func__, curr_addr, raw_instruction);
 
-	ptrdiff_t delta = 0;
-	if (hook_addr > curr_addr)
-		delta = hook_addr - curr_addr;
-	else
-		delta = curr_addr - hook_addr;
-		
-	if (delta >= bl_max_delta) {
+	ptrdiff_t delta = hook_addr - curr_addr;
+	if (__builtin_labs(delta) >= bl_max_delta) {
 		pr_info("%s: callsite 0x%lx to hook 0x%lx out of range! (delta: %ld bytes)\n",  __func__, curr_addr, hook_addr, delta);
 		return -ERANGE;
 	}
@@ -151,4 +146,4 @@ bail:
 #define arm64_bl_patch(tgt, width, symaddr, hookaddr)		arm64_branch_patch(tgt, width, symaddr, hookaddr, BRANCH_TYPE_BL)
 #define arm64_b_or_bl_patch(tgt, width, symaddr, hookaddr)	arm64_branch_patch(tgt, width, symaddr, hookaddr, BRANCH_TYPE_B_OR_BL)
 
-#endif // __KSU_H_ARM64_BL_PATCH
+#endif // __H_ARM64_BRANCH_PATCH
