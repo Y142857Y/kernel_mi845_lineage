@@ -490,12 +490,12 @@ static int do_nuke_ext4_sysfs(void __user *arg)
 
 	ret = strncpy_from_user(mnt, (void __user *)cmd.arg, sizeof(mnt));
 	if (ret < 0) {
-		pr_err("nuke ext4 copy mnt failed: %ld\\n", ret);
+		pr_err("nuke ext4 copy mnt failed: %ld\n", ret);
 		return -EFAULT;   // 或者 return ret;
 	}
 
 	if (ret == sizeof(mnt)) {
-		pr_err("nuke ext4 mnt path too long\\n");
+		pr_err("nuke ext4 mnt path too long\n");
 		return -ENAMETOOLONG;
 	}
 

@@ -371,6 +371,9 @@ static int throne_tracker_thread(void *data)
 {
 	// now de-void it here
 	bool prune_only = (bool)data;
+	// don't wait forever if packages.list never settles (e.g. broken update)
+	const unsigned int max_retries = 500; // 500 * 20ms = 10s
+	unsigned int tmp_retries = 0, list_retries = 0;
 
 	pr_info("throne_tracker: pid: %d started\n", current->pid);
 
@@ -379,6 +382,11 @@ static int throne_tracker_thread(void *data)
 test_tmp:
 	if (!is_file_existing("/data/system/packages.list.tmp"))
 		goto test_list;
+
+	if (tmp_retries++ >= max_retries) {
+		pr_warn("throne_tracker: packages.list.tmp still exists, continue anyway\n");
+		goto test_list;
+	}
 
 	if (IS_ENABLED(CONFIG_KSU_DEBUG))
 		pr_info("throne_tracker: rename not finished! retry!\n");
@@ -389,6 +397,11 @@ test_tmp:
 test_list:
 	if (is_file_stable(SYSTEM_PACKAGES_LIST_PATH))
 		goto start_tt;
+
+	if (list_retries++ >= max_retries) {
+		pr_warn("throne_tracker: packages.list still unstable, continue anyway\n");
+		goto start_tt;
+	}
 
 	if (IS_ENABLED(CONFIG_KSU_DEBUG))
 		pr_info("throne_tracker: rename not finished! retry!\n");

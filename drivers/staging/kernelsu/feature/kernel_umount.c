@@ -105,7 +105,8 @@ static inline int ksu_handle_umount(struct cred *new, const struct cred *old)
 		return 0;
 	}
 	// umount the target mnt
-	pr_info("handle umount for uid: %d, pid: %d\n", new_uid, current->pid);
+	// this runs for every app process spawn, keep it out of dmesg by default
+	pr_debug("handle umount for uid: %d, pid: %d\n", new_uid, current->pid);
 
 	// hostsredirect and getpriority filter tracks this flag
 	set_thread_flag(TIF_KSU_UNMOUNTABLE);
@@ -115,7 +116,7 @@ static inline int ksu_handle_umount(struct cred *new, const struct cred *old)
 	struct mount_entry *entry;
 	down_read(&mount_list_lock);
 	list_for_each_entry (entry, &mount_list, list) {
-		pr_info("%s: unmounting: %s flags: 0x%x\n", __func__, entry->umountable, entry->flags);
+		pr_debug("%s: unmounting: %s flags: 0x%x\n", __func__, entry->umountable, entry->flags);
 		try_umount(entry->umountable, entry->flags);
 	}
 	up_read(&mount_list_lock);
