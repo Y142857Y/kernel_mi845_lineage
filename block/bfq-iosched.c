@@ -3947,7 +3947,7 @@ static void bfq_set_next_ioprio_data(struct bfq_queue *bfqq,
 	ioprio_class = IOPRIO_PRIO_CLASS(bic->ioprio);
 	switch (ioprio_class) {
 	default:
-		dev_err(bfqq->bfqd->queue->backing_dev_info.dev,
+		dev_err(bfqq->bfqd->queue->backing_dev_info->dev,
 			"bfq: bad prio class %d\n", ioprio_class);
 	case IOPRIO_CLASS_NONE:
 		/*
@@ -4887,6 +4887,12 @@ static int bfq_init_queue(struct request_queue *q, struct elevator_type *e)
 	bfqd->bfq_back_max = bfq_back_max;
 	bfqd->bfq_back_penalty = bfq_back_penalty;
 	bfqd->bfq_slice_idle = bfq_slice_idle;
+	/*
+	 * Idling only pays off on rotational media, where the extra delay
+	 * lets the disk serve the next request without another seek.  On
+	 * flash it just adds latency, so switch it off there -- the same
+	 * thing cfq does for nonrot queues in cfq_init_queue().
+	 */
 	if (blk_queue_nonrot(bfqd->queue))
 		bfqd->bfq_slice_idle = 0;
 	bfqd->bfq_timeout = bfq_timeout;
