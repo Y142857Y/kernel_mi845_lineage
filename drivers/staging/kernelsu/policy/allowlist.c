@@ -380,9 +380,18 @@ static void do_persistent_allow_list()
 		goto close_file;
 	}
 
+	// note: the file was opened with O_TRUNC, so a failed/partial write
+	// leaves a broken allowlist behind. always report it loudly instead of
+	// silently pretending the save succeeded.
 	hash_for_each (allow_list, i, p, list) {
-		kernel_write(fp, &p->profile, sizeof(p->profile), &off);
+		if (kernel_write(fp, &p->profile, sizeof(p->profile), &off) != sizeof(p->profile)) {
+			pr_err("save_allow_list write profile (uid %d) failed.\n", p->profile.curr_uid);
+			break;
+		}
 	}
+
+	if (vfs_fsync(fp, 0))
+		pr_err("save_allow_list fsync failed.\n");
 
 close_file:
 	filp_close(fp, 0);
